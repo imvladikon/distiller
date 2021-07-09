@@ -1,10 +1,13 @@
 import argparse
+from pathlib import Path
 
 import matplotlib
 from catalyst.callbacks import ControlFlowCallback, OptimizerCallback
 from catalyst.callbacks.metric import LoaderMetricCallback
 from datasets import load_metric
 from transformers import AutoTokenizer
+
+from config.google_students_models import get_student_models
 from modeling.bert_multilabel_classification import BertForMultiLabelSequenceClassification
 
 from const import labels, device, ROOT_DIR
@@ -19,6 +22,7 @@ import torch
 from modeling.gong import bert_seq_classification as bsc
 
 import pandas as pd
+import wandb
 
 logging.basicConfig(format='%(asctime)s\t%(levelname)s\t%(name)s\t%(message)s',
                     datefmt='%Y-%m-%d %H:%M:%S',
@@ -47,16 +51,15 @@ def main(args):
         torch.set_num_threads(args['n_threads'])
         logger.info(f"Setting #threads to {args['n_threads']}")
 
-    logger.info(f"device: {device} \t #number of gpu: {args.n_gpu}")
+    logger.info(f"device: {device}")
+    logger.info(f"numbers of gpu: {torch.cuda.device_count()}")
     logger.info(f'Using model: {str(args.bert_model_dir)}')
 
     tokenizer = AutoTokenizer.from_pretrained(args.bert_tokenizer)
 
     label_list = labels
-    num_labels = len(label_list)
-
     teacher_model = BertForMultiLabelSequenceClassification.from_pretrained(args.teacher_model_name,
-                                                                                num_labels=len(label_list))
+                                                                            num_labels=len(label_list))
     teacher_model.to(device)
 
     ds = load_dataset(
@@ -65,7 +68,7 @@ def main(args):
         tokenizer=tokenizer,
         max_seq_length=512,
     )
-    loaders = datasets_as_loaders(ds, batch_size=args.batch_size)
+    loaders = datasets_as_loaders(ds, batch_size=args.train_batch_size, val_batch_size=args.val_batch_size)
 
     metric_callback = LoaderMetricCallback(
         metric=HFMetric(metric=load_metric("accuracy")), input_key="logits", target_key="labels",
@@ -87,8 +90,6 @@ def main(args):
         ),
         loaders="train",
     )
-
-    # mse_hiddens = ControlFlowCallback(MSEHiddenStatesCallback(), loaders="train")
 
     student_model = bsc.BertForMultiLabelSequenceClassification.from_pretrained(
         args.student_model_name, num_labels=len(label_list)
@@ -125,6 +126,8 @@ def main(args):
         metric=HFMetric(metric=load_metric("accuracy")), input_key="s_logits", target_key="labels",
     )
     # load_metric("f1")
+    if args.use_wandb:
+        wandb.watch(student_model, log_freq=100)
 
     runner.train(
         model=torch.nn.ModuleDict({"teacher": teacher_model, "student": student_model}),
@@ -139,32 +142,69 @@ def main(args):
             aggregator,
             OptimizerCallback(metric_key="loss"),
         ],
-        num_epochs=args.num_epochs,
+        num_epochs=args.num_train_epochs,
         valid_metric="accuracy",
         minimize_valid_metric=False,
         valid_loader="valid",
-        verbose=True
+        verbose=True,
+        # use_wandb=args.use_wandb
     )
 
-    student_model.save_pretrained(args.output_dir)
+    # TODO : add callback wandb
+    #     for batch_idx, (data, target) in enumerate(train_loader):
+    #         output = model(data)
+    #         loss = F.nll_loss(output, target)
+    #         loss.backward()
+    #         optimizer.step()
+    #         if batch_idx % args.log_interval == 0:
+    #             wandb.log({"loss": loss})
+
+    output_model_dir = Path(args.output_model_dir) / student_model_name
+    output_model_dir.mkdir(parents=True, exist_ok=True)
+    student_model.save_pretrained(output_model_dir)
 
 
 if __name__ == "__main__":
-    # TODO: add argparse
-    from config import default
+    hidden_size, num_layers = 256, 4
+    student_model_name = get_student_models(hidden_size=hidden_size, num_layers=num_layers)
 
-    args = default.args
-    args["teacher_model_name"] = ROOT_DIR / 'models' / 'tuned' / 'tuned_bertreply'
-    args["student_model_name"] = 'google/bert_uncased_L-2_H-128_A-2'
-    args["num_epochs"] = 5
-    args["batch_size"] = 1
+    parser = argparse.ArgumentParser(description='Fine-tuning bert')
+    parser.add_argument("-i", "--student_model_name", default=student_model_name, type=str, required=False)
+    parser.add_argument("-s", "--teacher_model_name", default='bert-base-uncased', type=str, required=False)
+    parser.add_argument("--do_train", default=True, type=bool, required=False)
+    parser.add_argument("--do_eval", default=True, type=bool, required=False)
+    parser.add_argument("--one_cycle_train", default=True, type=bool, required=False)
+    parser.add_argument("--train_format_with_proba", default=False, type=bool, required=False)
+    parser.add_argument("--train_size", default=-1, type=int, required=False)
+    parser.add_argument("--val_size", default=-1, type=int, required=False)
+    parser.add_argument("--data_dir", default=str(ROOT_DIR / 'data'), type=str, required=False)
+    parser.add_argument("--task_name", default='email_reject', type=str, required=False)
+    parser.add_argument("--bert_tokenizer", default="bert-base-uncased", type=str, required=False)
+    parser.add_argument("--bert_model_dir", default='bert-base-uncased', type=str, required=False)
+    parser.add_argument("--output_model_dir", default=str(ROOT_DIR / 'models' / 'distill'), type=str, required=False)
+    parser.add_argument("--data_output_dir", default=(ROOT_DIR / 'data' / 'class' / 'output'), type=str, required=False)
+    parser.add_argument("--max_seq_length", default=512, type=int, required=False)
+    parser.add_argument("--do_lower_case", default=True, type=bool, required=False)
+    parser.add_argument("--train_batch_size", default=24, type=int, required=False)
+    parser.add_argument("--val_batch_size", default=12, type=int, required=False)
+    parser.add_argument("--n_threads", default=4, type=int, required=False)
+    parser.add_argument("--learning_rate", default=3e-5, required=False)
+    parser.add_argument("--num_train_epochs", default=5, type=int, required=False)
+    parser.add_argument("--warmup_linear", default=0.1, type=float, required=False)
+    parser.add_argument("--no_cuda", default=False, type=bool, required=False)
+    parser.add_argument("--local_rank", default=-1, type=int, required=False)
+    parser.add_argument("--seed", default=42, type=int, required=False)
+    parser.add_argument("--gradient_accumulation_steps", default=1, type=int, required=False)
+    parser.add_argument("--optimize_on_cpu", default=True, type=bool, required=False)
+    parser.add_argument("--fp16", default=False, type=bool, required=False)
+    parser.add_argument("--loss_scale", default=128, type=int, required=False)
+    parser.add_argument("--labels_list", default=labels, type=list, required=False)
+    parser.add_argument("--use_wandb", default=False, type=bool, required=False)
+    args = parser.parse_args()
+    args = vars(args)
+    # TODO: log args
+    if args["use_wandb"]:
+        wandb.init(config=args)
     args = dotdict(args)
     set_seed(args.seed)
-    label_list = labels
-
     main(args)
-
-    # parser = argparse.ArgumentParser(description='Fine-tuning distillbert model on eth. classification task')
-    # parser.add_argument("-i", "--input_file", default="", type=str, required=True)
-    # parser.add_argument("-s", "--state_dict", default="", type=str, required=False)
-    # args = parser.parse_args()
