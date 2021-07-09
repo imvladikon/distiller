@@ -6,6 +6,7 @@ from transformers.modeling_outputs import SequenceClassifierOutput
 
 
 class BertForClassificationCNN(BertPreTrainedModel):
+
     def __init__(self,
                  config: BertConfig,
                  hidden_size=128,
@@ -14,7 +15,7 @@ class BertForClassificationCNN(BertPreTrainedModel):
                  *args,
                  **kwargs) -> None:
 
-        super(BertForClassificationCNN, self).__init__(config)
+        super(BertForClassificationCNN, self).__init__(config, *args, **kwargs)
 
         self.num_labels = config.num_labels
         self.bert = BertModel(config)
