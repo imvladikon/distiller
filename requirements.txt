@@ -7,3 +7,4 @@ torch
 catalyst
 transformers
 torchmetrics
+datasets
