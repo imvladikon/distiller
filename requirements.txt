@@ -9,3 +9,4 @@ transformers
 torchmetrics
 datasets
 wandb
+ujson

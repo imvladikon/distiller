@@ -9,6 +9,18 @@ from transformers.models.bert.configuration_bert import BertConfig
 
 class HFBertForMultiLabelSequenceClassification(BertPreTrainedModel):
     def __init__(self, config: BertConfig, regression: bool = False, *args, **kwargs) -> None:
+
+        """
+        based on huggingface model
+
+        Args:
+            config:
+            regression:
+            *args:
+            **kwargs:
+        """
+
+
         super().__init__(config, *args, **kwargs)
         self.num_labels = config.num_labels
         self.regression = regression
