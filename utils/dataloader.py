@@ -42,7 +42,7 @@ class DataProcessor(ABC):
 class InputExample(object):
     """A single training/test example for simple sequence classification."""
 
-    def __init__(self, document_id, text_a, labels=None):
+    def __init__(self, document_id = None, text_a = "", labels=None, guid=None):
         """Constructs a InputExample.
 
         Args:
@@ -54,7 +54,7 @@ class InputExample(object):
             specified for train and dev examples, but not for test examples.
         """
         self.document_id = document_id
-        self.guid = hash(document_id)
+        self.guid = hash(document_id) if guid is None else guid
         self.text_a = text_a
         self.labels = labels
 
@@ -322,7 +322,7 @@ def load_dataset(
         else:
             train_examples = _create_examples(data_df.sample(train_size))
 
-        train_features = convert_examples_to_features(train_examples, label_list, max_seq_length, tokenizer)
+    train_features = convert_examples_to_features(train_examples, label_list, max_seq_length, tokenizer)
 
     def to_dict(record):
         return {
