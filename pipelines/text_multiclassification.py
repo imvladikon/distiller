@@ -25,3 +25,34 @@ class TextClassificationPipeline(Pipeline):
             return [
                 {"label": self.model.config.id2label[item.argmax()], "score": item.max().item()} for item in scores
             ]
+
+
+if __name__ == '__main__':
+    from transformers import AutoTokenizer
+    from pprint import pprint
+    from modeling.bert_multilabel_classification import BertForMultiLabelSequenceClassification
+
+
+    labels = ['contract',
+              'ooo',
+              'payments',
+              'pi',
+              'pricing',
+              'reject',
+              'reply',
+              'scheduling']
+
+    id2label = {k: v for k, v in enumerate(labels)}
+    label2id = {v: k for k, v in id2label.items()}
+
+    model_checkpoint = "../models/tuned/tuned_final_model_8_tag_case_sensitive"
+    model = BertForMultiLabelSequenceClassification.from_pretrained(model_checkpoint, num_labels=len(labels))
+    model.config.label2id = label2id
+    model.config.id2label = id2label
+
+    pipe = TextClassificationPipeline(
+        model=model,
+        tokenizer= AutoTokenizer.from_pretrained("bert-base-uncased"),
+        return_all_scores=True)
+    message = """Nice to meet you. I can still me tomorrow at 2pm for 30 minutes. I have another call at 2:30."""
+    pprint(pipe(message))
