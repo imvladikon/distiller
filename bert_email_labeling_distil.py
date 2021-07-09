@@ -167,10 +167,10 @@ def main(args):
 if __name__ == "__main__":
     hidden_size, num_layers = 256, 4
     student_model_name = get_student_models(hidden_size=hidden_size, num_layers=num_layers)
-
+    teacher_model_name = ROOT_DIR / 'models' / 'tuned' / 'tuned_bertreply'
     parser = argparse.ArgumentParser(description='Fine-tuning bert')
-    parser.add_argument("-i", "--student_model_name", default=student_model_name, type=str, required=False)
-    parser.add_argument("-s", "--teacher_model_name", default='bert-base-uncased', type=str, required=False)
+    parser.add_argument("--student_model_name", default=student_model_name, type=str, required=False)
+    parser.add_argument("--teacher_model_name", default=teacher_model_name, type=str, required=False)
     parser.add_argument("--do_train", default=True, type=bool, required=False)
     parser.add_argument("--do_eval", default=True, type=bool, required=False)
     parser.add_argument("--one_cycle_train", default=True, type=bool, required=False)
@@ -180,7 +180,6 @@ if __name__ == "__main__":
     parser.add_argument("--data_dir", default=str(ROOT_DIR / 'data'), type=str, required=False)
     parser.add_argument("--task_name", default='email_reject', type=str, required=False)
     parser.add_argument("--bert_tokenizer", default="bert-base-uncased", type=str, required=False)
-    parser.add_argument("--bert_model_dir", default='bert-base-uncased', type=str, required=False)
     parser.add_argument("--output_model_dir", default=str(ROOT_DIR / 'models' / 'distill'), type=str, required=False)
     parser.add_argument("--data_output_dir", default=(ROOT_DIR / 'data' / 'class' / 'output'), type=str, required=False)
     parser.add_argument("--max_seq_length", default=512, type=int, required=False)
