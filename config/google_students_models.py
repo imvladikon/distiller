@@ -1,3 +1,18 @@
+
+"""
+Well-Read Students Learn Better:
+On the Importance of Pre-training Compact Models
+https://arxiv.org/abs/1908.08962
+https://github.com/google-research/bert/
+"""
+
+# 2/128 (BERT-Tiny)
+# 4/256 (BERT-Mini)
+# 4/512 (BERT-Small)
+# 8/512 (BERT-Medium)
+# 12/768 (BERT-Base)
+
+
 num_hidden_num_attention_heads_mapping = {
     128: 2,
     256: 4,
