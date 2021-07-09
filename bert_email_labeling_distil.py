@@ -117,12 +117,12 @@ def main(args):
         device=device
     ), loaders="train")
 
-    kl_div = ControlFlowCallback(KLDivCallback(temperature=4), loaders="train")
+    kl_div = ControlFlowCallback(KLDivCallback(temperature=1), loaders="train")
 
     aggregator = ControlFlowCallback(
         MetricAggregationCallback(
             prefix="loss",
-            metrics={"kl_div_loss": 0.2, "mse_loss": 0.2, "task_loss": 0.6},
+            metrics={"kl_div_loss": 0.2, "mse_loss": 0.3, "task_loss": 0.5},
             mode="weighted_sum",
         ),
         loaders="train",
