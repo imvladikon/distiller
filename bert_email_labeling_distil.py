@@ -192,15 +192,6 @@ def main(args):
         } if args.use_wandb else None
     )
 
-    # TODO : add callback wandb
-    #     for batch_idx, (data, target) in enumerate(train_loader):
-    #         output = model(data)
-    #         loss = F.nll_loss(output, target)
-    #         loss.backward()
-    #         optimizer.step()
-    #         if batch_idx % args.log_interval == 0:
-    #             wandb.log({"loss": loss})
-
     output_model_dir = Path(args.output_model_dir) / student_model_name
     output_model_dir.mkdir(parents=True, exist_ok=True)
     student_model.save_pretrained(output_model_dir)
