@@ -1,5 +1,9 @@
 import re
+import random
+
 import numpy as np
+import torch
+
 
 class dotdict(dict):
     """dot.notation access to dictionary attributes"""
@@ -67,6 +71,20 @@ def try_except(success, failure, *exceptions):
 
 def robust_div(numerator, denominator, default_val=np.nan):
     return numerator / denominator if denominator is not None and denominator != 0 else default_val
+
+
+def set_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+        try:
+            torch.backends.cudnn.deterministic = True
+        except:
+            pass
+    torch.use_deterministic_algorithms(True)
 
 if __name__=='__main__':
     I = [1,1,1,1,2,2.1,2.2,2.7,3,3.6,7,7.9,12]

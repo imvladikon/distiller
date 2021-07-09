@@ -22,14 +22,22 @@ from torch import nn
 from torch.nn import BCEWithLogitsLoss, MSELoss, CrossEntropyLoss, MultiLabelSoftMarginLoss
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler, TensorDataset
 from torch.utils.data.distributed import DistributedSampler
-from tqdm import tqdm
+from tqdm import tqdm, trange
 from transformers.modeling_outputs import SequenceClassifierOutput
+
+from utils import set_seed
+
+try:
+    from torch.utils.tensorboard import SummaryWriter
+except ImportError:
+    from tensorboardX import SummaryWriter
 
 logger = logging.getLogger(__name__)
 
 
 class Simple1LClassificationHead(nn.Module):
     """Head for sentence-level classification tasks."""
+
     def __init__(self, config):
         super().__init__()
         self.dropout = torch.nn.Dropout(config.hidden_dropout_prob)
@@ -44,6 +52,7 @@ class Simple1LClassificationHead(nn.Module):
 
 class Simple2LClassificationHead(nn.Module):
     """Head for sentence-level classification tasks."""
+
     def __init__(self, config):
         super().__init__()
 
@@ -120,11 +129,9 @@ class ElectraForMultiLabelSequenceClassification(ElectraForSequenceClassificatio
             output = (logits,) + outputs[2:]
         return ((loss,) + output) if loss is not None else output
 
-
     def freeze_bert_encoder(self):
         for param in self.electra.parameters():
             param.requires_grad = False
-
 
     def unfreeze_bert_encoder(self, unfreeze=['10', '11', 'pooler']):
         self.freeze_bert_encoder()
@@ -228,7 +235,7 @@ class BertForMultiLabelSequenceClassification(BertPreTrainedModel):
         self.num_labels = config.num_labels
         self.bert = BertModel(config)
 
-        self.middle_layer_size = config.hidden_size//10
+        self.middle_layer_size = config.hidden_size // 10
 
         self.dropout1 = torch.nn.Dropout(config.hidden_dropout_prob)
         self.fc1 = torch.nn.Linear(config.hidden_size, self.middle_layer_size)
@@ -241,19 +248,19 @@ class BertForMultiLabelSequenceClassification(BertPreTrainedModel):
         self.init_weights()
 
         self.is_multilabel = is_multilabel
-        self.regression=regression
+        self.regression = regression
 
     def forward(self,
-            input_ids=None,
-            attention_mask=None,
-            token_type_ids=None,
-            position_ids=None,
-            head_mask=None,
-            inputs_embeds=None,
-            labels=None,
-            output_attentions=None,
-            output_hidden_states=None,
-            return_dict=None):
+                input_ids=None,
+                attention_mask=None,
+                token_type_ids=None,
+                position_ids=None,
+                head_mask=None,
+                inputs_embeds=None,
+                labels=None,
+                output_attentions=None,
+                output_hidden_states=None,
+                return_dict=None):
 
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
@@ -277,7 +284,6 @@ class BertForMultiLabelSequenceClassification(BertPreTrainedModel):
 
         pooled_output = self.dropout(pooled_output)
 
-
         # pooled_output = outputs[0]
 
         logits = self.classifier(pooled_output)
@@ -295,11 +301,10 @@ class BertForMultiLabelSequenceClassification(BertPreTrainedModel):
                 loss_fct = MultiLabelSoftMarginLoss()
 
                 loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1, self.num_labels))
-            else:      # multi class
+            else:  # multi class
                 loss_fct = CrossEntropyLoss()
-                loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1,))
-                #loss = loss_fct(logits.view(-1, self.num_labels), labels)
-
+                loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1, ))
+                # loss = loss_fct(logits.view(-1, self.num_labels), labels)
 
         if not self.regression:
             logits = torch.sigmoid(logits)
@@ -315,7 +320,6 @@ class BertForMultiLabelSequenceClassification(BertPreTrainedModel):
             attentions=outputs.attentions,
         )
 
-
     def freeze_bert_encoder(self):
         for param in self.bert.parameters():
             param.requires_grad = False
@@ -328,9 +332,7 @@ class BertForMultiLabelSequenceClassification(BertPreTrainedModel):
                 param.requires_grad = True
 
 
-
-
-def predict(args, eval_features, model, device):
+def predict(args, eval_features, model, device, is_multilabel=True):
     t_start = time.time()
     logger.info("***** Running evaluation *****")
     logger.info("  Num examples = %d", len(eval_features))
@@ -339,13 +341,12 @@ def predict(args, eval_features, model, device):
     all_input_mask = torch.tensor([f.input_mask for f in eval_features], dtype=torch.long)
     all_segment_ids = torch.tensor([f.segment_ids for f in eval_features], dtype=torch.long)
     all_guids = [f.guid for f in eval_features]
-    if True:  # multi label
+    if is_multilabel:
         all_label_ids = torch.tensor([f.label_ids for f in eval_features], dtype=torch.float)
-    else:      # multi class
+    else:
         all_label_ids = torch.tensor([f.label_ids for f in eval_features], dtype=torch.long)
     eval_data = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids)
 
-    # Run prediction for full data
     eval_sampler = SequentialSampler(eval_data)
     eval_dataloader = DataLoader(eval_data, sampler=eval_sampler, batch_size=args['eval_batch_size'])
 
@@ -378,15 +379,16 @@ def predict(args, eval_features, model, device):
 
     t_dur = time.time() - t_start
     logger.info(f"Finished evaluation in {t_dur:.1f} sec")
-    logger.info(f"Throughput {len(eval_features)/t_dur}/sec")
+    logger.info(f"Throughput {len(eval_features) / t_dur}/sec")
 
     return all_logits, all_labels, all_guids
 
 
 def warmup_linear(x, warmup=0.002):
     if x < warmup:
-        return x/warmup
+        return x / warmup
     return 1.0 - x
+
 
 def train(args, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedTokenizer) -> Tuple[int, float]:
     """ Train the model """
@@ -397,8 +399,8 @@ def train(args, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedToke
 
     def collate(examples: List[torch.Tensor]):
         if tokenizer._pad_token is None:
-            return pad_sequence(examples, batch_first=True)
-        return pad_sequence(examples, batch_first=True, padding_value=tokenizer.pad_token_id)
+            return nn.utils.rnn.pad_sequence(examples, batch_first=True)
+        return nn.utils.rnn.pad_sequence(examples, batch_first=True, padding_value=tokenizer.pad_token_id)
 
     train_sampler = RandomSampler(train_dataset) if args.local_rank == -1 else DistributedSampler(train_dataset)
     train_dataloader = DataLoader(
@@ -427,9 +429,9 @@ def train(args, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedToke
 
     # Check if saved optimizer or scheduler states exist
     if (
-        args.model_name_or_path
-        and os.path.isfile(os.path.join(args.model_name_or_path, "optimizer.pt"))
-        and os.path.isfile(os.path.join(args.model_name_or_path, "scheduler.pt"))
+            args.model_name_or_path
+            and os.path.isfile(os.path.join(args.model_name_or_path, "optimizer.pt"))
+            and os.path.isfile(os.path.join(args.model_name_or_path, "scheduler.pt"))
     ):
         # Load in optimizer and scheduler states
         optimizer.load_state_dict(torch.load(os.path.join(args.model_name_or_path, "optimizer.pt")))
@@ -452,7 +454,6 @@ def train(args, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedToke
             model, device_ids=[args.local_rank], output_device=args.local_rank, find_unused_parameters=True
         )
 
-    # Train!
     logger.info("***** Running training *****")
     logger.info("  Num examples = %d", len(train_dataset))
     logger.info("  Num Epochs = %d", args.num_train_epochs)
@@ -494,7 +495,7 @@ def train(args, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedToke
     train_iterator = trange(
         epochs_trained, int(args.num_train_epochs), desc="Epoch", disable=args.local_rank not in [-1, 0]
     )
-    set_seed(args)  # Added here for reproducibility
+    set_seed(args)
     for _ in train_iterator:
         epoch_iterator = tqdm(train_dataloader, desc="Iteration", disable=args.local_rank not in [-1, 0])
         for step, batch in enumerate(epoch_iterator):
@@ -536,7 +537,7 @@ def train(args, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedToke
                 if args.local_rank in [-1, 0] and args.logging_steps > 0 and global_step % args.logging_steps == 0:
                     # Log metrics
                     if (
-                        args.local_rank == -1 and args.evaluate_during_training
+                            args.local_rank == -1 and args.evaluate_during_training
                     ):  # Only evaluate when single GPU otherwise metrics may not average well
                         results = evaluate(args, model, tokenizer)
                         for key, value in results.items():
@@ -559,7 +560,8 @@ def train(args, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedToke
                     torch.save(args, os.path.join(output_dir, "training_args.bin"))
                     logger.info("Saving model checkpoint to %s", output_dir)
 
-                    _rotate_checkpoints(args, checkpoint_prefix)
+                    # TODO: add transformers trainer
+                    # _rotate_checkpoints(args, checkpoint_prefix)
 
                     torch.save(optimizer.state_dict(), os.path.join(output_dir, "optimizer.pt"))
                     torch.save(scheduler.state_dict(), os.path.join(output_dir, "scheduler.pt"))
@@ -588,12 +590,13 @@ def evaluate(args, model: PreTrainedModel, tokenizer: PreTrainedTokenizer, prefi
         os.makedirs(eval_output_dir, exist_ok=True)
 
     args.eval_batch_size = args.per_gpu_eval_batch_size * max(1, args.n_gpu)
+
     # Note that DistributedSampler samples randomly
 
     def collate(examples: List[torch.Tensor]):
         if tokenizer._pad_token is None:
-            return pad_sequence(examples, batch_first=True)
-        return pad_sequence(examples, batch_first=True, padding_value=tokenizer.pad_token_id)
+            return nn.utils.rnn.pad_sequence(examples, batch_first=True)
+        return nn.utils.rnn.pad_sequence(examples, batch_first=True, padding_value=tokenizer.pad_token_id)
 
     eval_sampler = SequentialSampler(eval_dataset)
     eval_dataloader = DataLoader(
@@ -637,7 +640,8 @@ def evaluate(args, model: PreTrainedModel, tokenizer: PreTrainedTokenizer, prefi
 
     return result
 
-def train(args, train_features, model, device):
+
+def train(args, train_features, model, device, is_multilabel=True):
     num_epocs = args['num_train_epochs']
 
     num_train_steps = int(
@@ -664,17 +668,19 @@ def train(args, train_features, model, device):
         model = torch.nn.DataParallel(model)
 
     if args.warmup_linear:
-        scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=args.warmup_proportion, num_training_steps=t_total)
+        scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=args.warmup_proportion,
+                                                    num_training_steps=t_total)
     else:
         scheduler = None
 
     all_input_ids = torch.tensor([f.input_ids for f in train_features], dtype=torch.long)
-    all_input_mask = torch.tensor([f.input_mask for f in train_features], dtype=torch.long)
-    all_segment_ids = torch.tensor([f.segment_ids for f in train_features], dtype=torch.long)
-    if True:  # multi label
-        all_label_ids = torch.tensor([f.label_ids for f in train_features], dtype=torch.float)
-    else:      # multi class
-        all_label_ids = torch.tensor([f.label_ids for f in train_features], dtype=torch.long)
+    all_input_mask = torch.tensor([f.attention_mask for f in train_features], dtype=torch.long)
+    all_segment_ids = torch.tensor([f.token_type_ids for f in train_features], dtype=torch.long)
+    if is_multilabel:
+        all_label_ids = torch.tensor([f.labels for f in train_features], dtype=torch.float)
+    else:
+        all_label_ids = torch.tensor([f.labels for f in train_features], dtype=torch.long)
+
     train_data = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids)
 
     train_sampler = RandomSampler(train_data) if args.local_rank == -1 else DistributedSampler(train_data)
@@ -683,7 +689,7 @@ def train(args, train_features, model, device):
     global_step = 0
     model.train()
     for i_ in range(int(num_epocs)):
-        logger.info(f'{"*"*20}\nEpoch {i_+1}/{num_epocs}')
+        logger.info(f'{"*" * 20}\nEpoch {i_ + 1}/{num_epocs}')
         tr_loss = 0
         nb_tr_examples, nb_tr_steps = 0, 0
         for step, batch in enumerate(tqdm(train_dataloader, desc="Iteration")):
@@ -704,7 +710,7 @@ def train(args, train_features, model, device):
                 if scheduler:
                     scheduler.batch_step()
                 # modify learning rate with special warm up BERT uses
-                lr_this_step = args['learning_rate'] * warmup_linear(global_step/t_total, args['warmup_proportion'])
+                lr_this_step = args['learning_rate'] * warmup_linear(global_step / t_total, args['warmup_proportion'])
                 for param_group in optimizer.param_groups:
                     param_group['lr'] = lr_this_step
                 optimizer.step()
@@ -714,17 +720,8 @@ def train(args, train_features, model, device):
                 global_step += 1
 
         logger.info('Loss after epoc {}'.format(tr_loss / nb_tr_steps))
-        logger.info('Eval after epoc {}'.format(i_+1))
+        logger.info('Eval after epoc {}'.format(i_ + 1))
 
         # predict(args, train_features, model, device)
 
     return global_step, tr_loss / global_step
-
-
-def set_seed(seed):
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    torch.backends.cudnn.deterministic = True

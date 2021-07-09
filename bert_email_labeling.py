@@ -1,4 +1,9 @@
 import matplotlib
+
+from const import *
+from utils import set_seed
+from utils.dataloader import load_dataset, datasets_as_loaders
+
 matplotlib.use("agg")
 
 import logging
@@ -6,11 +11,9 @@ import os
 import torch
 
 from modeling.gong import bert_seq_classification as bsc
-from modeling.gong.bert_seq_classification import InputExample
-from misc import dotdict
+from modeling.gong.bert_seq_classification import BertTokenizer
 from collections import Counter
 
-from pathlib import Path
 import pandas as pd
 import numpy as np
 
@@ -28,78 +31,6 @@ pd.set_option('display.max_columns', 500)
 pd.set_option('display.width', 300)
 pd.set_option('display.max_colwidth', 100)
 
-chekpoint_path = r'./models/bert-base-uncased'
-chekpoint_path = r'bert-base-uncased'
-BERT_PRETRAINED_PATH = Path(chekpoint_path)
-
-# ## INITIAL SET UP
-
-#from transformers import BertModel, BertTokenizer
-#if not BERT_PRETRAINED_PATH.exists():
-#    BERT_PRETRAINED_PATH.resolve().mkdir(parents=True) 
-#model = BertModel.from_pretrained('bert-base-uncased')            # download from Internet
-#model.save_pretrained(BERT_PRETRAINED_PATH)                       # save
-#tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')    # download from Internet
-#tokenizer.save_pretrained(BERT_PRETRAINED_PATH)                   # save
-#exit()
-
-TRAIN_LABELS = ["Reject", "Scheduling", "Pricing", 'PI', "OOO", "Payments", "Contract", "reply"]
-# TRAIN_LABELS = ["Reject", "Scheduling", "Pricing", 'PI', "OOO"]
-# TRAIN_LABELS = ["Reject", "Scheduling", "Pricing", 'PI']
-# TRAIN_LABELS = ["Reject", "Scheduling", "Pricing", ]
-# TRAIN_LABELS = ["Reject", "OOO"]
-# TRAIN_LABELS = ["Reject"]
-# TRAIN_LABELS = ["Scheduling"]
-# TRAIN_LABELS = ["Reject"]
-# TRAIN_LABELS = ["Contract"]
-# TRAIN_LABELS = ["PI"]
-# TRAIN_LABELS = [ "Reject", "Scheduling", "Pricing", "PI", "Payments", "Contract"]
-# TRAIN_LABELS = ["Reject", "Scheduling", "Pricing", 'OOO', "Payments", "Contract"]
-TEST_LABELS = TRAIN_LABELS
-
-model_name = 'reply'
-suffix = '_x512'
-
-DATA_PATH = Path(r'./data/0')
-BERT_FINETUNED_PATH = Path(f'./models/tuned/tuned_bert{model_name}')
-
-CLAS_DATA_PATH = DATA_PATH/'class/output'
-CLAS_DATA_PATH.mkdir(exist_ok=True, parents=True)
-
-args = {
-    "do_train": True,
-    "do_eval": True,
-    "one_cycle_train": True,
-    "train_format_with_proba": False,
-    # "input_fname": 'train_sel+cur+aug.csv',
-    "train_size": -1,
-    "val_size": -1,
-    "data_dir": DATA_PATH,
-    "task_name": "email_reject",
-    "bert_tokenizer": Path(chekpoint_path),
-    "bert_model_dir": BERT_PRETRAINED_PATH,
-    "output_model_dir": BERT_FINETUNED_PATH,
-    "data_output_dir": CLAS_DATA_PATH,
-    "max_seq_length": 512,
-    "do_lower_case": True,
-    "train_batch_size": 24,
-    "eval_batch_size": 12,
-    "n_threads": 4,
-    "learning_rate": 3e-5,
-    "num_train_epochs": 3,
-    "warmup_linear": False,
-    "warmup_proportion": 0.1,
-    "no_cuda": False,
-    "local_rank": -1,
-    "seed": 888,
-    "gradient_accumulation_steps": 1,
-    "optimize_on_cpu": True,
-    "fp16": False,
-    "loss_scale": 128
-}
-args = dotdict.dotdict(args)
-
-
 
 def report(some_set, set_name):
     print(f'\n\n{"="*10}  {set_name} \n')
@@ -109,7 +40,6 @@ def report(some_set, set_name):
     for k, v in c.most_common(20):
         print(f'{k:15s}: {v}')
     print(f'\tTotal: {some_set.shape[0]}')
-
 
 
 def join_labels(df):
@@ -124,56 +54,41 @@ def join_labels(df):
     return df
 
 if __name__ == '__main__':
-    bsc.set_seed(args.seed)
+    # TODO: add argparse
+    from config import default
 
-    # download_data_from_s3(True)
-    # parquet2csv(TRAIN_LABELS)
-    # parquet2csv_combined(TRAIN_LABELS)
-
-    device = torch.device("cuda" if torch.cuda.is_available() and not args["no_cuda"] else "cpu")
-    n_gpu = torch.cuda.device_count()
-    args.n_gpu = n_gpu
+    args = default.args
+    set_seed(args.seed)
+    label_list = labels
+    model_name = args.model_name
 
     if 'n_threads' in args:
         torch.set_num_threads(args['n_threads'])
         logger.info(f"Setting #threads to {args['n_threads']}")
 
+    logger.info(f"device: {device} \t #gpu: {args.n_gpu}")
+    logger.info(f'Using model: {str(args.bert_model_dir)}')
 
-    # model_base = model_name
-    # for ix in range(7):
-    #     args.input_fname = f'train_cv{ix}.csv'
-    #     args.output_model_dir = Path(BERT_FINETUNED_PATH.as_posix() + f'_cv{ix}')
-    #     model_name = f'{model_base}_cv{ix}'
+    tokenizer = BertTokenizer.from_pretrained(args.bert_tokenizer)
+    model = bsc.BertForMultiLabelSequenceClassification.from_pretrained(args.bert_model_dir,
+                                                                        num_labels=len(label_list))
+    # model.resize_token_embeddings(len(tokenizer))
+    model.to(device)
 
-    # Train
+    ds = load_dataset(
+        train_filename=str(ROOT_DIR / "data" / "0" / "train.csv"),
+        val_filename=str(ROOT_DIR / "data" / "0" / "test.csv"),
+        tokenizer=tokenizer,
+        max_seq_length=512,
+    )
+    # loaders = datasets_as_loaders(ds, batch_size=64)
+
+    train_features = ds["train"]
+    eval_features = ds["test"]
+
+
     if args.do_train:
         logger.info('Training')
-        logger.info(f"device: {device} \t #gpu: {n_gpu}")
-        logger.info(f'Using model: {str(args.bert_model_dir)}')
-
-        bsc.set_seed(args.seed)
-        tokenizer = bsc.BertTokenizer.from_pretrained(args.bert_tokenizer)
-        processor = bsc.BinaryLabelTextProcessor(TRAIN_LABELS)
-
-        label_list = processor.get_labels()
-
-        if args.train_format_with_proba:
-            data_df = pd.read_csv(os.path.join(args.data_dir, args.input_fname))
-            lbls = ['proba_' + el.lower() for el in TRAIN_LABELS]
-            train_examples = data_df.apply(
-                lambda x: InputExample(guid=hash(x['document_id']),
-                                       text_a=x['document_text'],
-                                       labels=x[lbls].tolist()),
-                axis=1).tolist()
-        else:
-            train_examples = processor.get_train_examples(args, size=args.train_size)
-
-        train_features = bsc.convert_examples_to_features(train_examples, label_list, args.max_seq_length, tokenizer)
-
-        model = bsc.BertForMultiLabelSequenceClassification.from_pretrained(args.bert_model_dir,
-                                                                            num_labels=len(label_list))
-        # model.resize_token_embeddings(len(tokenizer))
-        model.to(device)
 
         if args.one_cycle_train:
             model.unfreeze_bert_encoder(['pooler'])
@@ -204,50 +119,24 @@ if __name__ == '__main__':
         # predicted_class = (all_proba >= thresh).numpy().astype(float)
         # print(classification_report(true_class, predicted_class, digits=5, target_names=label_list))
 
-    # args.input_fname = f'30_long.csv'
-    # args.input_fname = f'test_cv{ix}.csv'
-    # args.input_fname = f'test_cv6.csv'
-    args.input_fname = f'test.csv'
-    # args.input_fname = f'unlbl_50k.csv'
-    # args.input_fname = f'dev.csv'
-    # args.input_fname = f'train.csv'
     if args.do_eval:
         logger.info('Testing')
-
-        processor = bsc.BinaryLabelTextProcessor(TRAIN_LABELS)
-
-        tokenizer = bsc.BertTokenizer.from_pretrained(args.bert_tokenizer)
-
-        label_list = processor.get_labels()
-        num_labels = len(label_list)
-
-        args.eval_fname = 'test.csv'
-        eval_examples = processor.get_dev_examples(args)
-        eval_features = bsc.convert_examples_to_features(eval_examples, label_list, args.max_seq_length, tokenizer, cut_long=True)
-
-        model = bsc.BertForMultiLabelSequenceClassification.from_pretrained(args.output_model_dir.resolve().as_posix(),
-                                                                            num_labels=len(processor.get_labels()))
-        model.to(device)
-
         logits, true_class, guids = bsc.predict(args, eval_features, model, device)
-
         all_proba = torch.sigmoid(torch.Tensor(logits))
-
         thresh = 0.8
         predicted_class = (all_proba >= thresh).numpy().astype(float)
         # ones = np.maximum(predicted_class, true_class)*0.9998 + 0.0001
         ones = all_proba.numpy()
         res = pd.concat([
             pd.DataFrame(guids, columns=["guids"]),
-            pd.DataFrame(ones, columns=['proba_' + el.lower() for el in TRAIN_LABELS]),
-            pd.DataFrame(true_class, columns=['true_' + el.lower() for el in TRAIN_LABELS])
+            pd.DataFrame(ones, columns=['proba_' + el.lower() for el in label_list]),
+            pd.DataFrame(true_class, columns=['true_' + el.lower() for el in label_list])
         ], axis=1)
 
-        agg_by = {'proba_' + el.lower(): 'max' for el in TRAIN_LABELS}
-        agg_by.update({'true_' + el.lower(): 'max' for el in TRAIN_LABELS})
+        agg_by = {'proba_' + el.lower(): 'max' for el in label_list}
+        agg_by.update({'true_' + el.lower(): 'max' for el in label_list})
         res = res.groupby('guids').agg(agg_by).reset_index()
-
-        df = pd.read_csv(DATA_PATH / args.input_fname)
+        df = pd.read_csv(ROOT_DIR / 'data' / args.input_fname)
         if 'label_text' not in df.columns:
             df['label_text'] = 'no label'
             df['label_text'] = df['label_text'].apply(lambda x: [x])
@@ -270,8 +159,8 @@ if __name__ == '__main__':
         if os.path.exists(calibrated_fname):
             calibrated = pd.read_pickle(calibrated_fname)
             logger.info('Loading score calibrations')
-            if all(it in calibrated.columns for it in TRAIN_LABELS):
-                for lbl in TRAIN_LABELS:
+            if all(it in calibrated.columns for it in label_list):
+                for lbl in label_list:
                     df['proba_' + lbl.lower()] = np.interp(df['proba_' + lbl.lower()], calibrated['x'], calibrated[lbl])
         else:
             logger.warning(f'No calibrations file "{calibrated_fname}" was found')
@@ -288,7 +177,7 @@ if __name__ == '__main__':
 
         recall_threshold = 0.9
         precision_threshold = 0.9
-        for ix, label in enumerate(TRAIN_LABELS):
+        for ix, label in enumerate(label_list):
             label = label.lower()
             df_chk = df[df.label_text.str.contains(label)]
             precision, recall, thresholds = precision_recall_curve(df_chk[f"true_{label}"].values, df_chk[f'proba_{label}'].values)
