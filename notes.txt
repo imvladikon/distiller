@@ -1,0 +1,6 @@
+distillbert
+gpu/cpu()
+batch = 1
+cpu core
+4xlarge
+catalyst
