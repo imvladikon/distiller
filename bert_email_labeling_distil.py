@@ -4,6 +4,7 @@ from pathlib import Path
 import matplotlib
 from catalyst.callbacks import ControlFlowCallback, OptimizerCallback
 from catalyst.callbacks.metric import LoaderMetricCallback
+from catalyst.loggers import WandbLogger
 from datasets import load_metric
 from transformers import AutoTokenizer
 
@@ -68,7 +69,7 @@ def main(args):
         val_filename=args.val_filename,
         tokenizer=tokenizer,
         max_seq_length=512,
-        train_format_with_proba = args.train_format_with_proba,
+        train_format_with_proba=args.train_format_with_proba,
         train_size=args.train_size,
         val_size=args.val_size
     )
@@ -135,10 +136,13 @@ def main(args):
     student_model.config.output_hidden_states = True
 
     metric_callback = LoaderMetricCallback(
-        metric=HFMetric(metric=load_metric(str(ROOT_DIR / 'metrics' / 'seqeval.py'), threshold = 0.8), regression=True), input_key="s_logits", target_key="labels",
+        metric=HFMetric(metric=load_metric(str(ROOT_DIR / 'metrics' / 'seqeval.py'), threshold=0.8), regression=True),
+        input_key="s_logits", target_key="labels",
     )
     # load_metric("f1")
     if args.use_wandb:
+        import os
+        os.environ["WANDB_API_KEY"] = args.wandb_token
         wandb.watch(student_model, log_freq=100)
 
     callbacks = [
@@ -159,6 +163,20 @@ def main(args):
         metric_callback,
         *callbacks
     ]
+    wandb_logger = None
+    if args.use_wandb:
+        wandb_logger = WandbLogger(project="wandb_test", name=f"distill_t{teacher_model_name}_s{student_model_name}")
+        run = wandb_logger.run
+        run.config = {
+            **dict(args),
+            "student_hidden_size": student_model.config.hidden_size,
+            "student_num_hidden_layers": student_model.config.num_hidden_layers,
+            "student_num_attention_heads": student_model.config.num_attention_heads
+        }
+        run.tags.append(teacher_model_name)
+        run.tags.append(student_model_name)
+        run.update()
+
     runner.train(
         model=torch.nn.ModuleDict({"teacher": teacher_model, "student": student_model}),
         loaders=loaders,
@@ -169,7 +187,9 @@ def main(args):
         minimize_valid_metric=False,
         valid_loader="valid",
         verbose=True,
-        # use_wandb=args.use_wandb
+        loggers={
+            "wandb": wandb_logger
+        } if args.use_wandb else None
     )
 
     # TODO : add callback wandb
@@ -190,12 +210,14 @@ if __name__ == "__main__":
     hidden_size, num_layers = 256, 6
     student_model_name = get_student_models(hidden_size=hidden_size, num_layers=num_layers)
     teacher_model_name = ROOT_DIR / 'models' / 'tuned' / 'tuned_bertreply'
+
     parser = argparse.ArgumentParser(description='Fine-tuning bert')
     parser.add_argument("--student_model_name", default=student_model_name, type=str, required=False)
     parser.add_argument("--teacher_model_name", default=teacher_model_name, type=str, required=False)
     parser.add_argument("--do_train", default=True, type=bool, required=False)
     parser.add_argument("--do_eval", default=True, type=bool, required=False)
-    parser.add_argument("--train_filename", default=str(ROOT_DIR / "data" / "0" / "train_weak_label_bin_email_id.csv"), type=str, required=False)
+    parser.add_argument("--train_filename", default=str(ROOT_DIR / "data" / "0" / "train_weak_label_bin_email_id.csv"),
+                        type=str, required=False)
     parser.add_argument("--val_filename", default=str(ROOT_DIR / "data" / "0" / "test.csv"), type=str, required=False)
     parser.add_argument("--one_cycle_train", default=True, type=bool, required=False)
     parser.add_argument("--train_format_with_proba", default=True, type=bool, required=False)
@@ -223,11 +245,10 @@ if __name__ == "__main__":
     parser.add_argument("--loss_scale", default=128, type=int, required=False)
     parser.add_argument("--labels_list", default=labels, type=list, required=False)
     parser.add_argument("--use_wandb", default=False, type=bool, required=False)
+    parser.add_argument("--wandb_token", default='', type=str, required=False)
+
     args = parser.parse_args()
     args = vars(args)
-    # TODO: log args
-    if args["use_wandb"]:
-        wandb.init(config=args)
     args = dotdict(args)
     set_seed(args.seed)
     main(args)
