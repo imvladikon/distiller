@@ -1,3 +1,5 @@
+import argparse
+
 import matplotlib
 from catalyst.callbacks import ControlFlowCallback, OptimizerCallback
 from catalyst.callbacks.metric import LoaderMetricCallback
@@ -161,3 +163,8 @@ if __name__ == "__main__":
     label_list = labels
 
     main(args)
+
+    # parser = argparse.ArgumentParser(description='Fine-tuning distillbert model on eth. classification task')
+    # parser.add_argument("-i", "--input_file", default="", type=str, required=True)
+    # parser.add_argument("-s", "--state_dict", default="", type=str, required=False)
+    # args = parser.parse_args()
