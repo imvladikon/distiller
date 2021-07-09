@@ -86,6 +86,10 @@ def set_seed(seed):
             pass
     torch.use_deterministic_algorithms(True)
 
+def dict_to_device(batch, device):
+    return {k: v.to(device) for k, v in batch.items()}
+
+
 if __name__=='__main__':
     I = [1,1,1,1,2,2.1,2.2,2.7,3,3.6,7,7.9,12]
     J = [0,1,2,3,4,6,7,8,9]

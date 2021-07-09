@@ -50,7 +50,8 @@ args = {
     "gradient_accumulation_steps": 1,
     "optimize_on_cpu": True,
     "fp16": False,
-    "loss_scale": 128
+    "loss_scale": 128,
+    'model_name': model_name
 }
 args = dotdict(args)
 n_gpu = torch.cuda.device_count()

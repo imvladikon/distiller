@@ -362,7 +362,7 @@ def load_dataset(
     # datasets = datasets.map(lambda e: {"labels": e["label"]}, batched=True)
 
     datasets.set_format(
-        type="torch", columns=["input_ids", "token_type_ids", "attention_mask", "labels"],
+        type="torch", columns=["input_ids", "token_type_ids", "attention_mask", "labels"]
     )
 
     return datasets

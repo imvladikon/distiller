@@ -2,7 +2,7 @@ import matplotlib
 
 from const import *
 from utils import set_seed
-from utils.dataloader import load_dataset, datasets_as_loaders
+from utils.dataloader import load_dataset
 
 matplotlib.use("agg")
 
@@ -11,6 +11,8 @@ import os
 import torch
 
 from modeling.gong import bert_seq_classification as bsc
+from modeling.bert_multilabel_classification import BertForMultiLabelSequenceClassification
+
 from modeling.gong.bert_seq_classification import BertTokenizer
 from collections import Counter
 
@@ -25,7 +27,6 @@ logging.basicConfig(format='%(asctime)s\t%(levelname)s\t%(name)s\t%(message)s',
 
 logger = logging.getLogger(__name__)
 
-
 pd.set_option('display.max_rows', 500)
 pd.set_option('display.max_columns', 500)
 pd.set_option('display.width', 300)
@@ -33,7 +34,7 @@ pd.set_option('display.max_colwidth', 100)
 
 
 def report(some_set, set_name):
-    print(f'\n\n{"="*10}  {set_name} \n')
+    print(f'\n\n{"=" * 10}  {set_name} \n')
     c = Counter()
     for row in some_set.label_text.tolist():
         c.update(list(row))
@@ -53,6 +54,7 @@ def join_labels(df):
             print(row)
     return df
 
+
 if __name__ == '__main__':
     # TODO: add argparse
     from config import default
@@ -66,14 +68,13 @@ if __name__ == '__main__':
         torch.set_num_threads(args['n_threads'])
         logger.info(f"Setting #threads to {args['n_threads']}")
 
-    logger.info(f"device: {device} \t #gpu: {args.n_gpu}")
+    logger.info(f"device: {device} \t #number of gpu: {args.n_gpu}")
     logger.info(f'Using model: {str(args.bert_model_dir)}')
 
     tokenizer = BertTokenizer.from_pretrained(args.bert_tokenizer)
-    model = bsc.BertForMultiLabelSequenceClassification.from_pretrained(args.bert_model_dir,
-                                                                        num_labels=len(label_list))
+    model = BertForMultiLabelSequenceClassification.from_pretrained(args.bert_model_dir,
+                                                                    num_labels=len(label_list)).to(device)
     # model.resize_token_embeddings(len(tokenizer))
-    model.to(device)
 
     ds = load_dataset(
         train_filename=str(ROOT_DIR / "data" / "0" / "train.csv"),
@@ -86,7 +87,6 @@ if __name__ == '__main__':
     train_features = ds["train"]
     eval_features = ds["test"]
 
-
     if args.do_train:
         logger.info('Training')
 
@@ -98,13 +98,13 @@ if __name__ == '__main__':
             args.num_train_epochs = prev_num_train_epochs
 
         # args.num_train_epochs = prev_num_train_epochs
-        model.unfreeze_bert_encoder(['pooler', '11', '10', '9', '8', '7', '6', '5'])  #  , '9', '8', '7', '6'])
+        model.unfreeze_bert_encoder(['pooler', '11', '10', '9', '8', '7', '6', '5'])  # , '9', '8', '7', '6'])
         global_step, tr_loss = bsc.train(args, train_features, model, device)
         logger.info(" global_step = %s, average loss = %s", global_step, tr_loss)
 
-        # Save a trained model
         if not args.output_model_dir.exists():
             args.output_model_dir.resolve().mkdir(parents=True)
+
         model.save_pretrained(args.output_model_dir)
 
         # print('\n\n **** Evaluating ***\n')
@@ -141,7 +141,8 @@ if __name__ == '__main__':
             df['label_text'] = 'no label'
             df['label_text'] = df['label_text'].apply(lambda x: [x])
         if 'subject' in df:
-            gdf = df.groupby('document_id').agg({'label_text': 'sum', 'subject':'first', 'company_id':'first', 'document_text': 'first'}).reset_index()
+            gdf = df.groupby('document_id').agg({'label_text': 'sum', 'subject': 'first', 'company_id': 'first',
+                                                 'document_text': 'first'}).reset_index()
         else:
             gdf = df.groupby('document_id').agg({'label_text': 'sum', 'document_text': 'first'}).reset_index()
 
@@ -170,8 +171,8 @@ if __name__ == '__main__':
         # df = join_labels(df)
         # df.to_csv(DATA_PATH / '5_unlbl25k_train.csv', index=False)
 
-
         from matplotlib import pyplot as plt
+
         style = ['b-', 'r-', 'm-', 'c-', 'g-', 'k-', 'b:', 'r:', 'm:', 'c:', 'g:', ]
         plt.figure()
 
@@ -180,14 +181,16 @@ if __name__ == '__main__':
         for ix, label in enumerate(label_list):
             label = label.lower()
             df_chk = df[df.label_text.str.contains(label)]
-            precision, recall, thresholds = precision_recall_curve(df_chk[f"true_{label}"].values, df_chk[f'proba_{label}'].values)
-            thresh = thresholds[np.diff(recall<=recall_threshold).argmax()]
+            precision, recall, thresholds = precision_recall_curve(df_chk[f"true_{label}"].values,
+                                                                   df_chk[f'proba_{label}'].values)
+            thresh = thresholds[np.diff(recall <= recall_threshold).argmax()]
             # thresh = thresholds[np.diff(precision<=precision_threshold).argmax()]
-            predicted_class = (df_chk[f"proba_{label}"]>=thresh).values.astype(int)
+            predicted_class = (df_chk[f"proba_{label}"] >= thresh).values.astype(int)
             print(f'{label} : {thresh}')
             print(f'Avg Prc: {label:12} {average_precision_score(df_chk[f"true_{label}"].values, predicted_class)}')
             print(f'ROC AUC: {label:12} {roc_auc_score(df_chk[f"true_{label}"].values, predicted_class)}')
-            print(classification_report(df_chk[f"true_{label}"].values, predicted_class, digits=5, target_names=['no '+label, label]))
+            print(classification_report(df_chk[f"true_{label}"].values, predicted_class, digits=5,
+                                        target_names=['no ' + label, label]))
 
             plt.plot(recall, precision, style[ix], label=label)
         plt.xlabel('Recall')
@@ -199,4 +202,3 @@ if __name__ == '__main__':
         plt.legend()
         plt.savefig(f'{args.eval_fname.split(".")[0]}_{model_name}.png')
         plt.show()
-

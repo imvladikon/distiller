@@ -25,7 +25,7 @@ from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm, trange
 from transformers.modeling_outputs import SequenceClassifierOutput
 
-from utils import set_seed
+from utils import set_seed, dict_to_device
 
 try:
     from torch.utils.tensorboard import SummaryWriter
@@ -641,16 +641,19 @@ def evaluate(args, model: PreTrainedModel, tokenizer: PreTrainedTokenizer, prefi
     return result
 
 
-def train(args, train_features, model, device, is_multilabel=True):
+def train(args, train_data, model, device, is_multilabel=True):
+
+    # TODO: add Trainer from transformers
+
     num_epocs = args['num_train_epochs']
 
     num_train_steps = int(
-        len(train_features) / args['train_batch_size'] / args['gradient_accumulation_steps'] * args['num_train_epochs'])
+        len(train_data) / args['train_batch_size'] / args['gradient_accumulation_steps'] * args['num_train_epochs'])
 
     t_total = num_train_steps
 
     logger.info("***** Running training *****")
-    logger.info("  Num examples = %d", len(train_features))
+    logger.info("  Num examples = %d", len(train_data))
     logger.info("  Batch size = %d", args.train_batch_size)
     logger.info("  Num steps = %d", num_train_steps)
 
@@ -673,16 +676,6 @@ def train(args, train_features, model, device, is_multilabel=True):
     else:
         scheduler = None
 
-    all_input_ids = torch.tensor([f.input_ids for f in train_features], dtype=torch.long)
-    all_input_mask = torch.tensor([f.attention_mask for f in train_features], dtype=torch.long)
-    all_segment_ids = torch.tensor([f.token_type_ids for f in train_features], dtype=torch.long)
-    if is_multilabel:
-        all_label_ids = torch.tensor([f.labels for f in train_features], dtype=torch.float)
-    else:
-        all_label_ids = torch.tensor([f.labels for f in train_features], dtype=torch.long)
-
-    train_data = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids)
-
     train_sampler = RandomSampler(train_data) if args.local_rank == -1 else DistributedSampler(train_data)
     train_dataloader = DataLoader(train_data, sampler=train_sampler, batch_size=args.train_batch_size)
 
@@ -693,18 +686,30 @@ def train(args, train_features, model, device, is_multilabel=True):
         tr_loss = 0
         nb_tr_examples, nb_tr_steps = 0, 0
         for step, batch in enumerate(tqdm(train_dataloader, desc="Iteration")):
+            batch = dict_to_device(batch, device)
 
-            batch = tuple(t.to(device) for t in batch)
-            input_ids, input_mask, segment_ids, label_ids = batch
-            loss = model(input_ids, segment_ids, input_mask, label_ids)
-            loss = loss[0]
+            """ 
+            batch = {
+            'input_':torch.long,
+            'token_type_ids':torch.long,
+            'attention_mask':torch.long,
+            'labels': dtype=torch.float if is_multilabel else torch.long
+            }
+            """
+
+            output = model(**batch)
+            if isinstance(output, tuple):
+                loss = output[0]
+            else:
+                loss = output.loss
             loss.backward()
 
             if args.n_gpu > 1:
-                loss = loss.mean()  # mean() to average on multi-gpu parallel training
+                # mean() to average on multi-gpu parallel training
+                loss = loss.mean()
 
             tr_loss += loss.item()
-            nb_tr_examples += input_ids.size(0)
+            nb_tr_examples += batch["input_ids"].size(0)
             nb_tr_steps += 1
             if (step + 1) % args['gradient_accumulation_steps'] == 0:
                 if scheduler:
