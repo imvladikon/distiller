@@ -3,7 +3,7 @@ import os
 from abc import ABC
 from typing import List
 import ast
-from collections import Counter
+from collections import Counter, OrderedDict
 from pathlib import Path
 import pandas as pd
 from ast import literal_eval
@@ -291,7 +291,8 @@ def load_dataset(
         train_format_with_proba: bool = False,
         text_column: str = "",
         label_column: str = "",
-        train_size: int = -1
+        train_size: int = -1,
+        val_size: int = -1
 ) -> DatasetDict:
     # TODO : add column names (text_column , label_column)
     # TODO : add calculating max_seq_length from dataset if it's None
@@ -368,15 +369,15 @@ def load_dataset(
     return datasets
 
 
-def datasets_as_loaders(ds: DatasetDict, batch_size: int, val_batch_size: int = None) -> dict:
+def datasets_as_loaders(ds: DatasetDict, batch_size: int, val_batch_size: int = None) -> 'OrderedDict':
     if val_batch_size is None:
         val_batch_size = batch_size
 
     # TODO : add collate_fn=
-    loaders = {
+    loaders = OrderedDict({
         "train": DataLoader(ds["train"], batch_size=batch_size, shuffle=True),
         "valid": DataLoader(ds["test"], batch_size=val_batch_size),
-    }
+    })
     return loaders
 
 

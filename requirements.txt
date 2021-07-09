@@ -10,3 +10,4 @@ torchmetrics
 datasets
 wandb
 ujson
+seqeval

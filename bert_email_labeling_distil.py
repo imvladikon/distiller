@@ -68,19 +68,35 @@ def main(args):
         val_filename=str(ROOT_DIR / "data" / "0" / "test.csv"),
         tokenizer=tokenizer,
         max_seq_length=512,
+        train_size=args.train_size,
+        val_size=args.val_size
     )
     loaders = datasets_as_loaders(ds, batch_size=args.train_batch_size, val_batch_size=args.val_batch_size)
 
-    metric_callback = LoaderMetricCallback(
-        metric=HFMetric(metric=load_metric("accuracy")), input_key="logits", target_key="labels",
+    student_model = bsc.BertForMultiLabelSequenceClassification.from_pretrained(
+        args.student_model_name, num_labels=len(label_list)
     )
+
+    student_model.config.label2id = teacher_model.config.label2id
+    student_model.config.id2label = teacher_model.config.id2label
 
     ############### Distillation ##################
 
-    slct_callback = ControlFlowCallback(
-        HiddenStatesSelectCallback(hiddens_key="t_hidden_states", layers=[1, 3]), loaders="train",
-    )
-    # should len(layers)>=len(student)
+    num_teacher_layers = teacher_model.config.num_hidden_layers + 1
+    num_student_layers = student_model.config.num_hidden_layers + 1
+
+    map_layers = {
+        2: [1, 3],
+        4: [1, 3, 5, 7],
+        6: [1, 3, 5, 7, 9, 11],
+        8: [1, 2, 3, 5, 7, 9, 11, 13],
+        10: [1, 2, 3, 4, 5, 6, 7, 9, 11, 13],
+    }
+    if num_student_layers < num_teacher_layers and num_student_layers in map_layers:
+        slct_callback = ControlFlowCallback(
+            HiddenStatesSelectCallback(hiddens_key="t_hidden_states", layers=map_layers[num_student_layers]),
+            loaders="train",
+        )
 
     lambda_hiddens_callback = ControlFlowCallback(
         LambdaPreprocessCallback(
@@ -92,19 +108,13 @@ def main(args):
         loaders="train",
     )
 
-    student_model = bsc.BertForMultiLabelSequenceClassification.from_pretrained(
-        args.student_model_name, num_labels=len(label_list)
-    )
-
-    student_model.config.label2id = teacher_model.config.label2id
-    student_model.config.id2label = teacher_model.config.id2label
-
     mse_hiddens = ControlFlowCallback(MSEHiddenStatesCallback(
         normalize=True,
         need_mapping=True,
         teacher_hidden_state_dim=teacher_model.config.hidden_size,
         student_hidden_state_dim=student_model.config.hidden_size,
         num_layers=student_model.config.num_hidden_layers,
+        device=device
     ), loaders="train")
 
     kl_div = ControlFlowCallback(KLDivCallback(temperature=4), loaders="train")
@@ -124,25 +134,35 @@ def main(args):
     student_model.config.output_hidden_states = True
 
     metric_callback = LoaderMetricCallback(
-        metric=HFMetric(metric=load_metric("accuracy")), input_key="s_logits", target_key="labels",
+        metric=HFMetric(metric=load_metric(str(ROOT_DIR / 'metrics' / 'seqeval.py')), regression=True), input_key="s_logits", target_key="labels",
     )
     # load_metric("f1")
     if args.use_wandb:
         wandb.watch(student_model, log_freq=100)
 
+    callbacks = [
+        # metric_callback,
+        lambda_hiddens_callback,
+        mse_hiddens,
+        kl_div,
+        aggregator,
+        OptimizerCallback(metric_key="loss"),
+    ]
+    if num_student_layers < num_teacher_layers and num_student_layers in map_layers:
+        callbacks = [
+            # metric_callback,
+            slct_callback,
+            *callbacks
+        ]
+    callbacks = [
+        metric_callback,
+        *callbacks
+    ]
     runner.train(
         model=torch.nn.ModuleDict({"teacher": teacher_model, "student": student_model}),
         loaders=loaders,
-        optimizer=torch.optim.Adam(student_model.parameters(), lr=1e-4),
-        callbacks=[
-            # metric_callback,
-            slct_callback,
-            lambda_hiddens_callback,
-            mse_hiddens,
-            kl_div,
-            aggregator,
-            OptimizerCallback(metric_key="loss"),
-        ],
+        optimizer=torch.optim.Adam(student_model.parameters(), lr=args.learning_rate),
+        callbacks=callbacks,
         num_epochs=args.num_train_epochs,
         valid_metric="accuracy",
         minimize_valid_metric=False,
@@ -166,7 +186,7 @@ def main(args):
 
 
 if __name__ == "__main__":
-    hidden_size, num_layers = 256, 4
+    hidden_size, num_layers = 256, 6
     student_model_name = get_student_models(hidden_size=hidden_size, num_layers=num_layers)
     teacher_model_name = ROOT_DIR / 'models' / 'tuned' / 'tuned_bertreply'
     parser = argparse.ArgumentParser(description='Fine-tuning bert')
@@ -176,8 +196,8 @@ if __name__ == "__main__":
     parser.add_argument("--do_eval", default=True, type=bool, required=False)
     parser.add_argument("--one_cycle_train", default=True, type=bool, required=False)
     parser.add_argument("--train_format_with_proba", default=False, type=bool, required=False)
-    parser.add_argument("--train_size", default=-1, type=int, required=False)
-    parser.add_argument("--val_size", default=-1, type=int, required=False)
+    parser.add_argument("--train_size", default=5, type=int, required=False)
+    parser.add_argument("--val_size", default=5, type=int, required=False)
     parser.add_argument("--data_dir", default=str(ROOT_DIR / 'data'), type=str, required=False)
     parser.add_argument("--task_name", default='email_reject', type=str, required=False)
     parser.add_argument("--bert_tokenizer", default="bert-base-uncased", type=str, required=False)
