@@ -13,7 +13,7 @@ import torch
 from modeling.gong import bert_seq_classification as bsc
 from modeling.bert_multilabel_classification import BertForMultiLabelSequenceClassification
 
-from modeling.gong.bert_seq_classification import BertTokenizer
+from transformers import AutoTokenizer
 from collections import Counter
 
 import pandas as pd
@@ -71,7 +71,7 @@ if __name__ == '__main__':
     logger.info(f"device: {device} \t #number of gpu: {args.n_gpu}")
     logger.info(f'Using model: {str(args.bert_model_dir)}')
 
-    tokenizer = BertTokenizer.from_pretrained(args.bert_tokenizer)
+    tokenizer = AutoTokenizer.from_pretrained(args.bert_tokenizer)
     model = BertForMultiLabelSequenceClassification.from_pretrained(args.bert_model_dir,
                                                                     num_labels=len(label_list)).to(device)
     # model.resize_token_embeddings(len(tokenizer))

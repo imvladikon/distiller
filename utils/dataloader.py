@@ -372,6 +372,7 @@ def datasets_as_loaders(ds: DatasetDict, batch_size: int, val_batch_size: int = 
     if val_batch_size is None:
         val_batch_size = batch_size
 
+    # TODO : add collate_fn=
     loaders = {
         "train": DataLoader(ds["train"], batch_size=batch_size, shuffle=True),
         "valid": DataLoader(ds["test"], batch_size=val_batch_size),

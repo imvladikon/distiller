@@ -21,6 +21,7 @@ class MSEHiddenStatesCallback(Callback):
         teacher_hidden_state_dim: int = None,
         student_hidden_state_dim: int = None,
         num_layers: int = None,
+        device = None
     ):
         """
         MSE loss aka Hint loss for difference between hidden
@@ -37,7 +38,9 @@ class MSEHiddenStatesCallback(Callback):
             teacher_hidden_state_dim=teacher_hidden_state_dim,
             student_hidden_state_dim=student_hidden_state_dim,
             num_layers=num_layers,
-        ).to("cuda")
+        )
+        if device is not None:
+            self.criterion.to(device)
 
     def on_batch_end(self, runner):
         runner.batch_metrics[self.output_key] = self.criterion(

@@ -1,28 +1,21 @@
 import logging
 import os
-import random
 import time
-import ast
-from collections import Counter
-from pathlib import Path
-
 from typing import Dict, List, Tuple
+
 import numpy as np
-import pandas as pd
 import torch
-from transformers import AdamW, get_linear_schedule_with_warmup
-from transformers import BertPreTrainedModel, BertModel
-from transformers import BertTokenizer, PreTrainedModel, PreTrainedTokenizer
-
-from transformers import RobertaModel, RobertaForSequenceClassification
-from transformers import ElectraForSequenceClassification
-from transformers.activations import get_activation
-
 from torch import nn
-from torch.nn import BCEWithLogitsLoss, MSELoss, CrossEntropyLoss, MultiLabelSoftMarginLoss
+from torch.nn import MSELoss, CrossEntropyLoss, MultiLabelSoftMarginLoss
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler, TensorDataset
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm, trange
+from transformers import AdamW, get_linear_schedule_with_warmup
+from transformers import BertPreTrainedModel, BertModel
+from transformers import ElectraForSequenceClassification
+from transformers import PreTrainedModel, PreTrainedTokenizer
+from transformers import RobertaForSequenceClassification
+from transformers.activations import get_activation
 from transformers.modeling_outputs import SequenceClassifierOutput
 
 from utils import set_seed, dict_to_device

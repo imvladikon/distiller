@@ -1,33 +1,22 @@
-import pickle
-
-from bert_email_labeling import TRAIN_LABELS, DATA_PATH, chekpoint_path, BERT_PRETRAINED_PATH, BERT_FINETUNED_PATH, \
-    CLAS_DATA_PATH
-
-import torch
-from torch.utils.data import DataLoader
-
-from datasets import load_dataset, load_metric
-
+import matplotlib
 from catalyst.callbacks import ControlFlowCallback, OptimizerCallback
 from catalyst.callbacks.metric import LoaderMetricCallback
-import matplotlib
+from datasets import load_metric
+from transformers import AutoTokenizer
+from modeling.bert_multilabel_classification import BertForMultiLabelSequenceClassification
+
+from const import labels, device, ROOT_DIR
+from utils import set_seed, dotdict
+from utils.dataloader import load_dataset, datasets_as_loaders
 
 matplotlib.use("agg")
 
 import logging
-import os
 import torch
 
 from modeling.gong import bert_seq_classification as bsc
-from modeling.gong.bert_seq_classification import InputExample
-from misc import dotdict
-from collections import Counter
 
-from pathlib import Path
 import pandas as pd
-import numpy as np
-
-from sklearn.metrics import precision_recall_curve, classification_report, roc_auc_score, average_precision_score
 
 logging.basicConfig(format='%(asctime)s\t%(levelname)s\t%(name)s\t%(message)s',
                     datefmt='%Y-%m-%d %H:%M:%S',
@@ -49,117 +38,33 @@ from compressors.distillation.callbacks import (
 )
 from compressors.distillation.runners import HFDistilRunner
 from compressors.metrics.hf_metric import HFMetric
-from compressors.runners.hf_runner import HFRunner
 
 
 def main(args):
-    # device = torch.device("cuda" if torch.cuda.is_available() and not args["no_cuda"] else "cpu")
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    n_gpu = torch.cuda.device_count()
+    if 'n_threads' in args:
+        torch.set_num_threads(args['n_threads'])
+        logger.info(f"Setting #threads to {args['n_threads']}")
 
-    # if args.do_train:
-    #     logger.info('Training')
-    #     logger.info(f"device: {device} \t #gpu: {n_gpu}")
-    #     logger.info(f'Using model: {str(args.bert_model_dir)}')
-    #
-    #     bsc.set_seed(args.seed)
-    #     tokenizer = bsc.BertTokenizer.from_pretrained(args.bert_tokenizer)
-    #     processor = bsc.BinaryLabelTextProcessor(TRAIN_LABELS)
-    #
-    #     label_list = processor.get_labels()
-    #
-    #     if args.train_format_with_proba:
-    #         data_df = pd.read_csv(os.path.join(args.data_dir, args.input_fname))
-    #         lbls = ['proba_' + el.lower() for el in TRAIN_LABELS]
-    #         train_examples = data_df.apply(
-    #             lambda x: InputExample(guid=hash(x['document_id']),
-    #                                    text_a=x['document_text'],
-    #                                    labels=x[lbls].tolist()),
-    #             axis=1).tolist()
-    #     else:
-    #         train_examples = processor.get_train_examples(args, size=args.train_size)
-    #
-    #     train_features = bsc.convert_examples_to_features(train_examples, label_list, args.max_seq_length, tokenizer)
+    logger.info(f"device: {device} \t #number of gpu: {args.n_gpu}")
+    logger.info(f'Using model: {str(args.bert_model_dir)}')
 
-    processor = bsc.BinaryLabelTextProcessor(TRAIN_LABELS)
+    tokenizer = AutoTokenizer.from_pretrained(args.bert_tokenizer)
 
-    tokenizer = bsc.BertTokenizer.from_pretrained(args.bert_tokenizer)
-
-    label_list = processor.get_labels()
+    label_list = labels
     num_labels = len(label_list)
 
-    teacher_model = bsc.BertForMultiLabelSequenceClassification.from_pretrained(args.teacher_model_name,
+    teacher_model = BertForMultiLabelSequenceClassification.from_pretrained(args.teacher_model_name,
                                                                                 num_labels=len(label_list))
     teacher_model.to(device)
 
-    if os.path.exists("train_features.pkl"):
-        train_features = pickle.load(open("train_features.pkl", "rb"))
-    else:
-        label_list = processor.get_labels()
-
-        if args.train_format_with_proba:
-            data_df = pd.read_csv(os.path.join(args.data_dir, args.input_fname))
-            lbls = ['proba_' + el.lower() for el in TRAIN_LABELS]
-            train_examples = data_df.apply(
-                lambda x: InputExample(guid=hash(x['document_id']),
-                                       text_a=x['document_text'],
-                                       labels=x[lbls].tolist()),
-                axis=1).tolist()
-        else:
-            train_examples = processor.get_train_examples(args, size=args.train_size)
-
-        train_features = bsc.convert_examples_to_features(train_examples, label_list, args.max_seq_length, tokenizer)
-
-
-    def to_dict(record):
-        return {
-            "input_ids": record.input_ids,
-            "token_type_ids": record.segment_ids,
-            "attention_mask": record.input_mask,
-            "labels": record.label_ids
-        }
-        # return {a: getattr(record, a) for a in ["input_ids", "input_mask", "label_ids", "segment_ids"]}
-
-    # "input_ids", "token_type_ids", "attention_mask", "labels"
-
-    train_df = pd.DataFrame([to_dict(record) for record in train_features])
-
-    from sklearn.model_selection import train_test_split
-    from datasets import Dataset, DatasetDict
-
-    args.eval_fname = 'test.csv'
-    eval_examples = processor.get_dev_examples(args)
-    eval_features = bsc.convert_examples_to_features(
-        eval_examples,
-        label_list,
-        args.max_seq_length,
-        tokenizer,
-        cut_long=True)
-
-    val_df = pd.DataFrame([to_dict(record) for record in eval_features])
-
-    datasets = DatasetDict(
-        dict(
-            train=Dataset.from_pandas(train_df),
-            test=Dataset.from_pandas(val_df)
-            # test=Dataset.from_pandas(test_df)
-        )
+    ds = load_dataset(
+        train_filename=str(ROOT_DIR / "data" / "0" / "train.csv"),
+        val_filename=str(ROOT_DIR / "data" / "0" / "test.csv"),
+        tokenizer=tokenizer,
+        max_seq_length=512,
     )
+    loaders = datasets_as_loaders(ds, batch_size=args.batch_size)
 
-    # datasets = datasets.map(
-    #     lambda e: tokenizer(e["text"], truncation=True, padding="max_length", max_length=128),
-    #     batched=True,
-    # )
-    # datasets = datasets.map(lambda e: {"labels": e["label"]}, batched=True)
-    datasets.set_format(
-        type="torch", columns=["input_ids", "token_type_ids", "attention_mask", "labels"],
-    )
-
-
-    loaders = {
-        "train": DataLoader(datasets["train"], batch_size=1, shuffle=True),
-        "valid": DataLoader(datasets["test"], batch_size=1),
-    }
     metric_callback = LoaderMetricCallback(
         metric=HFMetric(metric=load_metric("accuracy")), input_key="logits", target_key="labels",
     )
@@ -211,7 +116,6 @@ def main(args):
 
     runner = HFDistilRunner()
 
-
     teacher_model.config.output_hidden_states = True
     student_model.config.output_hidden_states = True
 
@@ -244,41 +148,16 @@ def main(args):
 
 
 if __name__ == "__main__":
-    args = {
-        "do_train": True,
-        "do_eval": True,
-        "one_cycle_train": True,
-        "train_format_with_proba": False,
-        # "input_fname": 'train_sel+cur+aug.csv',
-        "train_size": -1,
-        "val_size": -1,
-        "data_dir": DATA_PATH,
-        "task_name": "email_reject",
-        "bert_tokenizer": Path(chekpoint_path),
-        "bert_model_dir": BERT_PRETRAINED_PATH,
-        "output_model_dir": BERT_FINETUNED_PATH,
-        "data_output_dir": CLAS_DATA_PATH,
-        "max_seq_length": 512,
-        "do_lower_case": True,
-        "train_batch_size": 24,
-        "eval_batch_size": 12,
-        "n_threads": 4,
-        "learning_rate": 3e-5,
-        "num_train_epochs": 3,
-        "warmup_linear": False,
-        "warmup_proportion": 0.1,
-        "no_cuda": False,
-        "local_rank": -1,
-        "seed": 888,
-        "gradient_accumulation_steps": 1,
-        "optimize_on_cpu": True,
-        "fp16": False,
-        "loss_scale": 128,
-        "teacher_model_name": "bert-base-uncased",
-        "student_model_name": "google/bert_uncased_L-2_H-128_A-2",
-        "output_dir": ".",
-        "num_epochs": 5
-    }
-    args = dotdict.dotdict(args)
+    # TODO: add argparse
+    from config import default
+
+    args = default.args
+    args["teacher_model_name"] = ROOT_DIR / 'models' / 'tuned' / 'tuned_bertreply'
+    args["student_model_name"] = 'google/bert_uncased_L-2_H-128_A-2'
+    args["num_epochs"] = 5
+    args["batch_size"] = 1
+    args = dotdict(args)
+    set_seed(args.seed)
+    label_list = labels
 
     main(args)
