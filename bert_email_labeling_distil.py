@@ -53,7 +53,8 @@ def main(args):
 
     logger.info(f"device: {device}")
     logger.info(f"numbers of gpu: {torch.cuda.device_count()}")
-    logger.info(f'Using model: {str(args.bert_model_dir)}')
+    logger.info(f'teacher model: {str(args.teacher_model_name)}')
+    logger.info(f'student model: {str(args.student_model_name)}')
 
     tokenizer = AutoTokenizer.from_pretrained(args.bert_tokenizer)
 
