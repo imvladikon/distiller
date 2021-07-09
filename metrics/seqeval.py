@@ -105,14 +105,15 @@ class Seqeval(datasets.Metric):
         )
 
     def _compute(
-        self,
-        predictions,
-        references,
-        suffix: bool = False,
-        scheme: Optional[str] = None,
-        mode: Optional[str] = None,
-        sample_weight: Optional[List[int]] = None,
-        zero_division: Union[str, int] = "warn",
+            self,
+            predictions,
+            references,
+            suffix: bool = False,
+            scheme: Optional[str] = None,
+            mode: Optional[str] = None,
+            sample_weight: Optional[List[int]] = None,
+            zero_division: Union[str, int] = "warn",
+            **metric_init_kwargs
     ):
         if scheme is not None:
             try:
@@ -122,9 +123,10 @@ class Seqeval(datasets.Metric):
                 raise ValueError(f"Scheme should be one of [IOB1, IOB2, IOE1, IOE2, IOBES, BILOU], got {scheme}")
 
         return utils._compute(
-        predictions= predictions,
-        references = references
-    )
+            predictions=predictions,
+            references=references,
+            **metric_init_kwargs
+        )
         # report = classification_report(
         #     y_true=references,
         #     y_pred=predictions,

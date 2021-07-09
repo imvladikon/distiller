@@ -108,8 +108,10 @@ def _compute(
         mode: Optional[str] = None,
         sample_weight: Optional[List[int]] = None,
         zero_division: Union[str, int] = "warn",
+        **metric_init_kwargs
 ):
     threshold = 0.5
+    num_classes = len(references[0])
 
     predictions = torch.FloatTensor(predictions)
     target = torch.LongTensor(references)
@@ -120,14 +122,40 @@ def _compute(
         predictions,
         target)
 
-    precision_samples = torchmetrics.Precision(threshold=threshold, multiclass=True, average="samples", mdmc_average="samplewise")(
+    precision_samples = torchmetrics.Precision(threshold=threshold, multiclass=True, average="samples",
+                                               mdmc_average="samplewise")(
         predictions,
         target)
 
-    recall_samples = torchmetrics.Recall(threshold=threshold, multiclass=True, average="samples", mdmc_average="samplewise")(
+    recall_samples = torchmetrics.Recall(threshold=threshold, multiclass=True, average="samples",
+                                         mdmc_average="samplewise")(
         predictions,
         target)
 
+
+    f1_micro = torchmetrics.F1(threshold=threshold, average="micro", num_classes=num_classes)(
+        predictions,
+        target)
+
+    precision_micro = torchmetrics.Precision(threshold=threshold, average="micro", num_classes=num_classes)(
+        predictions,
+        target)
+
+    recall_micro = torchmetrics.Recall(threshold=threshold, average="micro", num_classes=num_classes)(
+        predictions,
+        target)
+
+    f1_macro = torchmetrics.F1(threshold=threshold, average="macro", num_classes=num_classes)(
+        predictions,
+        target)
+
+    precision_macro = torchmetrics.Precision(threshold=threshold, average="macro", num_classes=num_classes)(
+        predictions,
+        target)
+
+    recall_macro = torchmetrics.Recall(threshold=threshold, average="macro", num_classes=num_classes)(
+        predictions,
+        target)
 
     # scores = {
     #     type_name: {
@@ -139,6 +167,15 @@ def _compute(
     #     for type_name, score in report.items()
     # }
     scores = {}
+
+    scores["precision_micro"] = precision_micro
+    scores["recall_micro"] = recall_micro
+    scores["f1_micro"] = f1_micro
+
+    scores["precision_macro"] = precision_macro
+    scores["recall_macro"] = recall_macro
+    scores["f1_macro"] = f1_macro
+
     scores["overall_precision"] = precision_samples
     scores["overall_recall"] = recall_samples
     scores["overall_f1"] = f1_samples
@@ -153,3 +190,26 @@ if __name__ == '__main__':
 
     result = match_sorted_array_to_another_sorted_array(I, J)
     print(result)
+    # threshold = 0.5
+    #
+    # predictions = [[1,0,0,0,1,0,0,0]]
+    # references = [[1,0,0,0,1,0,0,0]]
+    #
+    # predictions = torch.FloatTensor(predictions)
+    # target = torch.LongTensor(references)
+    #
+    # accuracy_samples = torchmetrics.Accuracy(threshold=threshold, multiclass=True)(predictions,
+    #                                                                                target)
+    # f1_samples = torchmetrics.F1(threshold=threshold, multiclass=True, average="samples", mdmc_average="samplewise")(
+    #     predictions,
+    #     target)
+    #
+    # precision_samples = torchmetrics.Precision(threshold=threshold, multiclass=True, average="samples",
+    #                                            mdmc_average="samplewise")(
+    #     predictions,
+    #     target)
+    #
+    # recall_samples = torchmetrics.Recall(threshold=threshold, multiclass=True, average="samples",
+    #                                      mdmc_average="samplewise")(
+    #     predictions,
+    #     target)

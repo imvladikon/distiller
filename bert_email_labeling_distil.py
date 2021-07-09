@@ -134,7 +134,7 @@ def main(args):
     student_model.config.output_hidden_states = True
 
     metric_callback = LoaderMetricCallback(
-        metric=HFMetric(metric=load_metric(str(ROOT_DIR / 'metrics' / 'seqeval.py')), regression=True), input_key="s_logits", target_key="labels",
+        metric=HFMetric(metric=load_metric(str(ROOT_DIR / 'metrics' / 'seqeval.py'), threshold = 0.8), regression=True), input_key="s_logits", target_key="labels",
     )
     # load_metric("f1")
     if args.use_wandb:
@@ -196,8 +196,8 @@ if __name__ == "__main__":
     parser.add_argument("--do_eval", default=True, type=bool, required=False)
     parser.add_argument("--one_cycle_train", default=True, type=bool, required=False)
     parser.add_argument("--train_format_with_proba", default=False, type=bool, required=False)
-    parser.add_argument("--train_size", default=5, type=int, required=False)
-    parser.add_argument("--val_size", default=5, type=int, required=False)
+    parser.add_argument("--train_size", default=-1, type=int, required=False)
+    parser.add_argument("--val_size", default=-1, type=int, required=False)
     parser.add_argument("--data_dir", default=str(ROOT_DIR / 'data'), type=str, required=False)
     parser.add_argument("--task_name", default='email_reject', type=str, required=False)
     parser.add_argument("--bert_tokenizer", default="bert-base-uncased", type=str, required=False)

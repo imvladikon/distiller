@@ -15,6 +15,7 @@ class TextClassificationPipeline(Pipeline):
         if self.model.config.num_labels == 1:
             scores = 1.0 / (1.0 + np.exp(-outputs))
         else:
+            # TODO: fix for multilabel multiclassification
             scores = np.exp(outputs) / np.exp(outputs).sum(-1, keepdims=True)
         if self.return_all_scores:
             return [
