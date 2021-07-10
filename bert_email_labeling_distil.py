@@ -189,21 +189,31 @@ def main(args):
         run.update()
 
     # callbacks = [WandbLogger(project="catalyst", name='Example'), logging_params = {params}]
-
-    runner.train(
-        model=torch.nn.ModuleDict({"teacher": teacher_model, "student": student_model}),
-        loaders=loaders,
-        optimizer=torch.optim.Adam(student_model.parameters(), lr=args.learning_rate),
-        callbacks=callbacks,
-        num_epochs=args.num_train_epochs,
-        valid_metric="accuracy",
-        minimize_valid_metric=False,
-        valid_loader="valid",
-        verbose=True,
-        loggers={
-            "wandb": wandb_logger
-        } if args.use_wandb else None
-    )
+    if args.use_wandb:
+        runner.train(
+            model=torch.nn.ModuleDict({"teacher": teacher_model, "student": student_model}),
+            loaders=loaders,
+            optimizer=torch.optim.Adam(student_model.parameters(), lr=args.learning_rate),
+            callbacks=callbacks,
+            num_epochs=args.num_train_epochs,
+            valid_metric="accuracy",
+            minimize_valid_metric=False,
+            valid_loader="valid",
+            verbose=True,
+            loggers=[wandb_logger]
+        )
+    else:
+        runner.train(
+            model=torch.nn.ModuleDict({"teacher": teacher_model, "student": student_model}),
+            loaders=loaders,
+            optimizer=torch.optim.Adam(student_model.parameters(), lr=args.learning_rate),
+            callbacks=callbacks,
+            num_epochs=args.num_train_epochs,
+            valid_metric="accuracy",
+            minimize_valid_metric=False,
+            valid_loader="valid",
+            verbose=True
+        )
 
     output_model_dir = Path(args.output_model_dir) / student_model_name
     output_model_dir.mkdir(parents=True, exist_ok=True)
