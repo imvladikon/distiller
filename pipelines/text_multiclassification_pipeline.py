@@ -1,5 +1,6 @@
 import numpy as np
 from transformers import Pipeline
+from transformers.tokenization_utils_base import TruncationStrategy
 
 
 class TextClassificationPipeline(Pipeline):
@@ -10,12 +11,31 @@ class TextClassificationPipeline(Pipeline):
         self.return_all_scores = return_all_scores
         self.is_multilabel = is_multilabel
 
+    def _parse_and_tokenize(
+            self, inputs, padding=True, add_special_tokens=True, truncation=TruncationStrategy.DO_NOT_TRUNCATE, **kwargs
+    ):
+        """
+        Parse arguments and tokenize
+        """
+        # Parse arguments
+        inputs = self.tokenizer(
+            inputs,
+            add_special_tokens=add_special_tokens,
+            return_tensors=self.framework,
+            padding=padding,
+            truncation=truncation,
+            **kwargs
+        )
+
+        return inputs
+
     def __call__(self, *args, **kwargs):
         outputs = super().__call__(*args, **kwargs)
 
         if self.model.config.num_labels == 1:
             scores = 1.0 / (1.0 + np.exp(-outputs))
         elif self.is_multilabel:
+            # assume that bert multi label classifier do sigmoid
             scores = outputs
         else:
             scores = np.exp(outputs) / np.exp(outputs).sum(-1, keepdims=True)
@@ -60,4 +80,4 @@ if __name__ == '__main__':
         tokenizer=AutoTokenizer.from_pretrained("bert-base-uncased"),
         is_multilabel=True)
     message = """Nice to meet you. I can still me tomorrow at 2pm for 30 minutes. I have another call at 2:30."""
-    pprint(pipe(message))
+    pprint(pipe(message, truncation=True, padding="max_length", max_length=512))
