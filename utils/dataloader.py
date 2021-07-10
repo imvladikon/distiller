@@ -1,20 +1,17 @@
+import ast
 import logging
 import os
 from abc import ABC
-from typing import List
-import ast
 from collections import Counter, OrderedDict
-from pathlib import Path
-import pandas as pd
-from ast import literal_eval
-from sklearn.model_selection import train_test_split
-from torch.utils.data import DataLoader
-from datasets import Dataset, DatasetDict
+from typing import List, Optional
 
+import pandas as pd
 import transformers
+from datasets import Dataset
+from datasets import DatasetDict
+from torch.utils.data import DataLoader
 
 from const import labels
-from datasets import DatasetDict
 
 logger = logging.getLogger(__name__)
 
@@ -191,7 +188,14 @@ def _create_examples(df):
     return res
 
 
-def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer, cut_long=True):
+def convert_examples_to_features(examples,
+                                 label_list,
+                                 max_seq_length,
+                                 tokenizer,
+                                 cut_long=True,
+                                 is_multilabel=True,
+                                 is_multilabel_with_proba=False,
+                                 threshold=0.5):
     """Loads a data file into a list of `InputBatch`s."""
 
     label_map = {label.lower(): i for i, label in enumerate(label_list)}
@@ -263,9 +267,11 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
             assert len(input_mask) == max_seq_length
             assert len(segment_ids) == max_seq_length
 
-            if True:  # multi label
+            if is_multilabel:  # multi label
                 labels_ids = [int(l in example.labels) for l in
                               label_map]  # [1.0 if example.labels==lbl else 0.0 for lbl in label_map]  # this should be used for multi-label
+            elif is_multilabel_with_proba:
+                labels_ids = [int(proba > threshold) for proba in example.labels]
             else:  # multi class
                 labels_ids = label_map[example.labels[0].lower()] if example.labels[
                                                                          0].lower() in label_map else 0  # this should be used for multi-class
@@ -285,15 +291,16 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
 
 def load_dataset(
         train_filename: str,
-        val_filename: str,
-        max_seq_length: int,
-        tokenizer: transformers.AutoTokenizer,
+        val_filename: str = None,
+        max_seq_length: int = 512,
+        tokenizer: transformers.AutoTokenizer = None,
         train_format_with_proba: bool = False,
         text_column: str = "",
         label_column: str = "",
         train_size: int = -1,
         val_size: int = -1,
-        columns=None
+        columns: Optional[List] = None,
+        threshold: float = 0.5
 ) -> DatasetDict:
     # TODO : add column names (text_column , label_column)
     # TODO : add calculating max_seq_length from dataset if it's None
@@ -326,7 +333,16 @@ def load_dataset(
         else:
             train_examples = _create_examples(data_df.sample(train_size))
 
-    train_features = convert_examples_to_features(train_examples, label_list, max_seq_length, tokenizer)
+    if not train_format_with_proba:
+        train_features = convert_examples_to_features(train_examples, label_list, max_seq_length, tokenizer)
+    else:
+        train_features = convert_examples_to_features(train_examples,
+                                                      label_list,
+                                                      max_seq_length,
+                                                      tokenizer,
+                                                      is_multilabel=False,
+                                                      is_multilabel_with_proba=True,
+                                                      threshold=threshold)
 
     def to_dict(record):
         return {
@@ -340,29 +356,36 @@ def load_dataset(
 
     train_df = pd.DataFrame([to_dict(record) for record in train_features])
 
-    logger.info(f"Reading {val_filename}")
-    val_df = pd.read_csv(val_filename, dtype=str)
-    if val_size == -1:
-        eval_examples = _create_examples(val_df)
-    else:
-        eval_examples = _create_examples(val_df.sample(val_size))
+    if val_filename and os.path.exists(val_filename):
+        logger.info(f"Reading {val_filename}")
+        val_df = pd.read_csv(val_filename, dtype=str)
+        if val_size == -1:
+            eval_examples = _create_examples(val_df)
+        else:
+            eval_examples = _create_examples(val_df.sample(val_size))
 
-    eval_features = convert_examples_to_features(
-        eval_examples,
-        label_list,
-        max_seq_length,
-        tokenizer,
-        cut_long=True)
+        eval_features = convert_examples_to_features(
+            eval_examples,
+            label_list,
+            max_seq_length,
+            tokenizer,
+            cut_long=True)
 
-    val_df = pd.DataFrame([to_dict(record) for record in eval_features])
+        val_df = pd.DataFrame([to_dict(record) for record in eval_features])
 
-    datasets = DatasetDict(
-        dict(
-            train=Dataset.from_pandas(train_df),
-            test=Dataset.from_pandas(val_df)
-            # test=Dataset.from_pandas(test_df)
+        datasets = DatasetDict(
+            dict(
+                train=Dataset.from_pandas(train_df),
+                test=Dataset.from_pandas(val_df)
+                # test=Dataset.from_pandas(test_df)
+            )
         )
-    )
+    else:
+        datasets = DatasetDict(
+            dict(
+                train=Dataset.from_pandas(train_df),
+            )
+        )
 
     # datasets = datasets.map(
     #     lambda e: tokenizer(e["text"], truncation=True, padding="max_length", max_length=128),

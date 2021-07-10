@@ -42,7 +42,7 @@ args = {
     "n_threads": 4,
     "learning_rate": 3e-5,
     "num_train_epochs": 3,
-    "warmup_linear": False,
+    "warmup_linear": True,
     "warmup_proportion": 0.1,
     "no_cuda": False,
     "local_rank": -1,
@@ -51,7 +51,8 @@ args = {
     "optimize_on_cpu": True,
     "fp16": False,
     "loss_scale": 128,
-    'model_name': model_name
+    'model_name': model_name,
+    'additional_data': str(ROOT_DIR / 'data' / 'unlabeled_data')
 }
 args = dotdict(args)
 n_gpu = torch.cuda.device_count()

@@ -3,6 +3,7 @@ import matplotlib
 from const import *
 from utils import set_seed
 from utils.dataloader import load_dataset
+from datasets import concatenate_datasets
 
 matplotlib.use("agg")
 
@@ -81,8 +82,26 @@ if __name__ == '__main__':
         train_filename=str(ROOT_DIR / "data" / "0" / "train.csv"),
         val_filename=str(ROOT_DIR / "data" / "0" / "test.csv"),
         tokenizer=tokenizer,
-        max_seq_length=512
+        max_seq_length=512,
+        train_format_with_proba=args.train_format_with_proba,
+        train_size=args.train_size,
+        val_size=args.val_size
     )
+
+    if args.additional_data:
+        import glob
+        add_ds = []
+        for f in glob.glob(f"{args.additional_data}/*.csv"):
+            if not os.path.exists(f): continue
+            new_ds = load_dataset(
+                train_filename=f,
+                tokenizer=tokenizer,
+                max_seq_length=512,
+                train_format_with_proba=True
+            )
+            add_ds.append(new_ds)
+        concatenate_datasets(ds, *add_ds)
+
     # loaders = datasets_as_loaders(ds, batch_size=64)
 
     train_features = ds["train"]

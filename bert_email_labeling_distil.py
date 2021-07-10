@@ -73,6 +73,23 @@ def main(args):
         train_size=args.train_size,
         val_size=args.val_size
     )
+    if args.additional_data:
+        import glob
+        import os
+        from datasets import concatenate_datasets
+
+        for f in glob.glob(f"{args.additional_data}/*.csv"):
+            if not os.path.exists(f): continue
+            f = str(ROOT_DIR/"data/0/train_weak_label_bin_email_id.csv")
+            new_ds = load_dataset(
+                train_filename=f,
+                tokenizer=tokenizer,
+                max_seq_length=512,
+                train_format_with_proba=True,
+                threshold = args.threshold
+            )
+            ds["train"] = concatenate_datasets([ds["train"], new_ds["train"]])
+
     loaders = datasets_as_loaders(ds, batch_size=args.train_batch_size, val_batch_size=args.val_batch_size)
 
     student_model = bsc.BertForMultiLabelSequenceClassification.from_pretrained(
@@ -154,8 +171,13 @@ def main(args):
     )
 
     if args.use_wandb:
+
         import os
-        os.environ["WANDB_API_KEY"] = args.wandb_token
+
+        if args.wandb_token:
+            os.environ["WANDB_API_KEY"] = args.wandb_token
+            del args["wandb_token"]
+            delattr(args, "wandb_token")
 
     callbacks = [
         # metric_callback,
@@ -179,6 +201,7 @@ def main(args):
     if args.use_wandb:
         t_model_name = os.path.basename(teacher_model_name) if os.path.isabs(teacher_model_name) else teacher_model_name
         s_model_name = os.path.basename(student_model_name) if os.path.isabs(student_model_name) else student_model_name
+        s_model_name = f"{s_model_name}_T-{args.temperature}"
         wandb_logger = WandbLogger(project="distill_bert",
                                    name=f"distill_t_{t_model_name}_s_{s_model_name}")
         run = wandb_logger.run
@@ -262,13 +285,14 @@ if __name__ == "__main__":
     parser.add_argument("--fp16", default=False, type=bool, required=False)
     parser.add_argument("--loss_scale", default=128, type=int, required=False)
     parser.add_argument("--labels_list", default=labels, type=list, required=False)
-    parser.add_argument("--use_wandb", default=True, type=bool, required=False)
+    parser.add_argument("--use_wandb", default=False, type=bool, required=False)
     parser.add_argument("--wandb_token", default='', type=str, required=False)
     parser.add_argument("--temperature", default=1, type=int, required=False)
     parser.add_argument("--kl_div_loss_weight", default=0.2, type=float, required=False)
     parser.add_argument("--mse_loss_weight", default=0.3, type=float, required=False)
     parser.add_argument("--task_loss_weight", default=0.5, type=float, required=False)
     parser.add_argument("--threshold", default=0.5, type=float, required=False)
+    parser.add_argument("--additional_data", default=str(ROOT_DIR / 'data' / 'unlabeled_data'), type=str, required=False)
 
     args = parser.parse_args()
     args = vars(args)
