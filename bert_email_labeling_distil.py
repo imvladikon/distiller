@@ -298,7 +298,7 @@ if __name__ == "__main__":
     parser.add_argument("--labels_list", default=labels, type=list, required=False)
     parser.add_argument("--use_wandb", default=False, type=bool, required=False)
     parser.add_argument("--wandb_token", default='', type=str, required=False)
-    parser.add_argument("--temperature", default=1, type=int, required=False)
+    parser.add_argument("--temperature", default=1, type=float, required=False)
     parser.add_argument("--kl_div_loss_weight", default=0.2, type=float, required=False)
     parser.add_argument("--mse_loss_weight", default=0.3, type=float, required=False)
     parser.add_argument("--task_loss_weight", default=0.5, type=float, required=False)
