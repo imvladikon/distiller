@@ -140,8 +140,12 @@ def main(args):
     teacher_model.config.output_hidden_states = True
     student_model.config.output_hidden_states = True
 
+    metric = load_metric(str(ROOT_DIR / 'metrics' / 'multiclasseval.py'),
+                         threshold=args.threshold,
+                         num_classes=len(label_list))
+    # regression is setting to True, for avoiding of calculating logits.argmax(-1) in HFMetric
     metric_callback = LoaderMetricCallback(
-        metric=HFMetric(metric=load_metric(str(ROOT_DIR / 'metrics' / 'seqeval.py'), threshold=args.threshold),
+        metric=HFMetric(metric=metric,
                         regression=True),
         input_key="s_logits", target_key="labels",
     )
@@ -251,7 +255,6 @@ if __name__ == "__main__":
     parser.add_argument("--mse_loss_weight", default=0.3, type=float, required=False)
     parser.add_argument("--task_loss_weight", default=0.5, type=float, required=False)
     parser.add_argument("--threshold", default=0.5, type=float, required=False)
-
 
     args = parser.parse_args()
     args = vars(args)
