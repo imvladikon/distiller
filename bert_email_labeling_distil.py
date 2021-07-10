@@ -205,6 +205,18 @@ def main(args):
         s_model_name = f"{s_model_name}_T-{args.temperature}"
         wandb_logger = WandbLogger(project="distill_bert",
                                    name=f"distill_t_{t_model_name}_s_{s_model_name}")
+
+        output_model_dir = Path(args.output_model_dir) / s_model_name
+        output_model_dir.mkdir(parents=True, exist_ok=True)
+
+        def close_log(self) -> None:
+            """Closes the logger."""
+            student_model.save_pretrained(output_model_dir)
+            wandb.save(output_model_dir)
+            self.run.finish()
+
+        wandb_logger.close_log = close_log
+
         run = wandb_logger.run
         run.config.update({
             **dict(args),
@@ -243,11 +255,7 @@ def main(args):
             verbose=True
         )
 
-    output_model_dir = Path(args.output_model_dir) / s_model_name
-    output_model_dir.mkdir(parents=True, exist_ok=True)
     student_model.save_pretrained(output_model_dir)
-    if args.use_wandb:
-        wandb.save(output_model_dir)
 
 
 if __name__ == "__main__":
