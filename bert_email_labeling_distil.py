@@ -177,7 +177,6 @@ def main(args):
         if args.wandb_token:
             os.environ["WANDB_API_KEY"] = args.wandb_token
             del args["wandb_token"]
-            delattr(args, "wandb_token")
 
     callbacks = [
         # metric_callback,
