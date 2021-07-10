@@ -128,13 +128,18 @@ class Multiclasseval(datasets.Metric):
         scores["overall_accuracy"] = accuracy_samples
         scores["matthews_corrcoef"] = matthews_corrcoef
 
-        aucroc_macro = torchmetrics.AUROC(num_classes=num_classes, average="macro")(
-            predictions,
-            target)
+        try:
+            aucroc_macro = torchmetrics.AUROC(num_classes=num_classes, average="macro")(
+                predictions,
+                target)
 
-        aucroc_micro = torchmetrics.AUROC(num_classes=num_classes, average="micro")(
-            predictions,
-            target)
+            aucroc_micro = torchmetrics.AUROC(num_classes=num_classes, average="micro")(
+                predictions,
+                target)
+        except:
+            aucroc_macro = 0
+            aucroc_micro = 0
+
 
         scores["aucroc_macro"] = aucroc_macro
         scores["aucroc_micro"] = aucroc_micro
