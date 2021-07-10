@@ -12,6 +12,7 @@ import torch
 
 from modeling.gong import bert_seq_classification as bsc
 from modeling.bert_multilabel_classification import BertForMultiLabelSequenceClassification
+from modeling.bert_cnn_classification import BertForClassificationCNN
 
 from transformers import AutoTokenizer
 from collections import Counter
