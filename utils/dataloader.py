@@ -304,7 +304,7 @@ def load_dataset(
     # test_df["label_text"] = test_df.label_text.map(literal_eval)
 
     if columns is None:
-        columns = ["input_ids", "token_type_ids", "attention_mask", "labels", "guid"]
+        columns = ["input_ids", "token_type_ids", "attention_mask", "labels"]
 
     processor = BinaryLabelTextProcessor(labels)
     label_list = processor.get_labels()
@@ -334,7 +334,7 @@ def load_dataset(
             "token_type_ids": record.segment_ids,
             "attention_mask": record.input_mask,
             "labels": record.label_ids,
-            "guid": record.guid
+            # "guid": record.guid
         }
         # return {a: getattr(record, a) for a in ["input_ids", "input_mask", "label_ids", "segment_ids"]}
 
