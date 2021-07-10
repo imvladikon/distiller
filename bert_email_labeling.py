@@ -80,7 +80,7 @@ if __name__ == '__main__':
         train_filename=str(ROOT_DIR / "data" / "0" / "train.csv"),
         val_filename=str(ROOT_DIR / "data" / "0" / "test.csv"),
         tokenizer=tokenizer,
-        max_seq_length=512,
+        max_seq_length=512
     )
     # loaders = datasets_as_loaders(ds, batch_size=64)
 
@@ -107,21 +107,9 @@ if __name__ == '__main__':
 
         model.save_pretrained(args.output_model_dir)
 
-        # print('\n\n **** Evaluating ***\n')
-        # args.input_fname = 'dev.csv'
-        # eval_examples = processor.get_dev_examples(args)
-        # eval_features = bsc.convert_examples_to_features(eval_examples, label_list, args.max_seq_length, tokenizer)
-
-        # logits, true_class, guids = bsc.predict(args, eval_features, model, device)
-        #
-        # all_proba = torch.sigmoid(torch.Tensor(logits))
-        # thresh = 0.8
-        # predicted_class = (all_proba >= thresh).numpy().astype(float)
-        # print(classification_report(true_class, predicted_class, digits=5, target_names=label_list))
-
     if args.do_eval:
         logger.info('Testing')
-        logits, true_class, guids = bsc.predict(args, eval_features, model, device)
+        logits, true_class, guids = bsc.predict(eval_features, model, device, eval_batch_size=args.eval_batch_size)
         all_proba = torch.sigmoid(torch.Tensor(logits))
         thresh = 0.8
         predicted_class = (all_proba >= thresh).numpy().astype(float)
@@ -136,7 +124,7 @@ if __name__ == '__main__':
         agg_by = {'proba_' + el.lower(): 'max' for el in label_list}
         agg_by.update({'true_' + el.lower(): 'max' for el in label_list})
         res = res.groupby('guids').agg(agg_by).reset_index()
-        df = pd.read_csv(ROOT_DIR / 'data' / args.input_fname)
+        df = pd.read_csv(ROOT_DIR / 'data' / '0' / 'test.csv')
         if 'label_text' not in df.columns:
             df['label_text'] = 'no label'
             df['label_text'] = df['label_text'].apply(lambda x: [x])
@@ -166,7 +154,7 @@ if __name__ == '__main__':
         else:
             logger.warning(f'No calibrations file "{calibrated_fname}" was found')
 
-        df.to_csv(args['data_output_dir'] / f'{args.input_fname.split(".")[0]}_{model_name}{suffix}.csv', index=True)
+        # df.to_csv(args['data_output_dir'] / f'{args.input_fname.split(".")[0]}_{model_name}{suffix}.csv', index=True)
 
         # df = join_labels(df)
         # df.to_csv(DATA_PATH / '5_unlbl25k_train.csv', index=False)

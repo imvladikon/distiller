@@ -93,8 +93,11 @@ def set_seed(seed):
             pass
 
 
-def dict_to_device(batch, device):
-    return {k: v.to(device) for k, v in batch.items()}
+def dict_to_device(batch, device, filter_props=None):
+    if filter_props is None:
+        return {k: v.to(device) for k, v in batch.items()}
+    else:
+        return {k: v.to(device) for k, v in batch.items() if k in filter_props}
 
 
 import torchmetrics
@@ -131,7 +134,6 @@ def _compute(
                                          mdmc_average="samplewise")(
         predictions,
         target)
-
 
     f1_micro = torchmetrics.F1(threshold=threshold, average="micro", num_classes=num_classes)(
         predictions,

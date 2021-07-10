@@ -325,54 +325,60 @@ class BertForMultiLabelSequenceClassification(BertPreTrainedModel):
                 param.requires_grad = True
 
 
-def predict(args, eval_features, model, device, is_multilabel=True):
+@torch.no_grad()
+def predict(eval_data, model, device, eval_batch_size, is_multilabel=True):
     t_start = time.time()
     logger.info("***** Running evaluation *****")
-    logger.info("  Num examples = %d", len(eval_features))
-    logger.info("  Batch size = %d", args['eval_batch_size'])
-    all_input_ids = torch.tensor([f.input_ids for f in eval_features], dtype=torch.long)
-    all_input_mask = torch.tensor([f.input_mask for f in eval_features], dtype=torch.long)
-    all_segment_ids = torch.tensor([f.segment_ids for f in eval_features], dtype=torch.long)
-    all_guids = [f.guid for f in eval_features]
-    if is_multilabel:
-        all_label_ids = torch.tensor([f.label_ids for f in eval_features], dtype=torch.float)
-    else:
-        all_label_ids = torch.tensor([f.label_ids for f in eval_features], dtype=torch.long)
-    eval_data = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids)
+    logger.info("  Num examples = %d", len(eval_data))
+    logger.info("  Batch size = %d", eval_batch_size)
 
     eval_sampler = SequentialSampler(eval_data)
-    eval_dataloader = DataLoader(eval_data, sampler=eval_sampler, batch_size=args['eval_batch_size'])
+    eval_dataloader = DataLoader(eval_data, sampler=eval_sampler, batch_size=eval_batch_size)
 
     all_logits = None
     all_labels = None
+    all_guids = None
 
     nb_eval_steps, nb_eval_examples = 0, 0
     model.eval()
-    for input_ids, input_mask, segment_ids, label_ids in tqdm(eval_dataloader):
-        input_ids = input_ids.to(device)
-        input_mask = input_mask.to(device)
-        segment_ids = segment_ids.to(device)
-        label_ids = label_ids.to(device)
+    for batch in tqdm(eval_dataloader):
+        labels = batch["labels"].detach().cpu().numpy()
 
-        with torch.no_grad():
-            logits = model(input_ids, segment_ids, input_mask)[0]
+        if all_labels is None:
+            all_labels = labels
+        else:
+            all_labels = np.concatenate((all_labels, labels), axis=0)
+
+        guids = batch["guid"].detach().cpu().numpy()
+
+        if all_guids is None:
+            all_guids = guids
+        else:
+            all_guids = np.concatenate((all_guids, guids), axis=0)
+
+        batch = dict_to_device(batch, device,
+                               filter_props=["input_ids",
+                                             "token_type_ids",
+                                             "attention_mask",
+                                             "labels"])
+
+        output = model(**batch)
+        if isinstance(output, tuple):
+            logits = output[1]
+        else:
+            logits = output.logits
 
         if all_logits is None:
             all_logits = logits.detach().cpu().numpy()
         else:
             all_logits = np.concatenate((all_logits, logits.detach().cpu().numpy()), axis=0)
 
-        if all_labels is None:
-            all_labels = label_ids.detach().cpu().numpy()
-        else:
-            all_labels = np.concatenate((all_labels, label_ids.detach().cpu().numpy()), axis=0)
-
-        nb_eval_examples += input_ids.size(0)
+        nb_eval_examples += batch["input_ids"].size(0)
         nb_eval_steps += 1
 
     t_dur = time.time() - t_start
     logger.info(f"Finished evaluation in {t_dur:.1f} sec")
-    logger.info(f"Throughput {len(eval_features) / t_dur}/sec")
+    logger.info(f"Throughput {len(eval_data) / t_dur}/sec")
 
     return all_logits, all_labels, all_guids
 
@@ -635,7 +641,6 @@ def evaluate(args, model: PreTrainedModel, tokenizer: PreTrainedTokenizer, prefi
 
 
 def train(args, train_data, model, device, is_multilabel=True):
-
     # TODO: add Trainer from transformers
 
     num_epocs = args['num_train_epochs']
@@ -679,16 +684,14 @@ def train(args, train_data, model, device, is_multilabel=True):
         tr_loss = 0
         nb_tr_examples, nb_tr_steps = 0, 0
         for step, batch in enumerate(tqdm(train_dataloader, desc="Iteration")):
-            batch = dict_to_device(batch, device)
-
-            """ 
-            batch = {
-            'input_':torch.long,
-            'token_type_ids':torch.long,
-            'attention_mask':torch.long,
-            'labels': dtype=torch.float if is_multilabel else torch.long
+            """ batch = {
+            'input_ids':torch.long,'token_type_ids':torch.long,'attention_mask':torch.long,'labels': dtype=torch.float if is_multilabel else torch.long
             }
             """
+            batch = dict_to_device(batch, device, filter_props=["input_ids",
+                                                                "token_type_ids",
+                                                                "attention_mask",
+                                                                "labels"])
 
             output = model(**batch)
             if isinstance(output, tuple):

@@ -42,7 +42,7 @@ class DataProcessor(ABC):
 class InputExample(object):
     """A single training/test example for simple sequence classification."""
 
-    def __init__(self, document_id = None, text_a = "", labels=None, guid=None):
+    def __init__(self, document_id=None, text_a="", labels=None, guid=None):
         """Constructs a InputExample.
 
         Args:
@@ -292,7 +292,8 @@ def load_dataset(
         text_column: str = "",
         label_column: str = "",
         train_size: int = -1,
-        val_size: int = -1
+        val_size: int = -1,
+        columns=None
 ) -> DatasetDict:
     # TODO : add column names (text_column , label_column)
     # TODO : add calculating max_seq_length from dataset if it's None
@@ -301,6 +302,9 @@ def load_dataset(
     # test_df = pd.read_csv("data/0/test.csv").reset_index(drop=True)
     # train_df["label_text"] = train_df.label_text.map(literal_eval)
     # test_df["label_text"] = test_df.label_text.map(literal_eval)
+
+    if columns is None:
+        columns = ["input_ids", "token_type_ids", "attention_mask", "labels", "guid"]
 
     processor = BinaryLabelTextProcessor(labels)
     label_list = processor.get_labels()
@@ -329,7 +333,8 @@ def load_dataset(
             "input_ids": record.input_ids,
             "token_type_ids": record.segment_ids,
             "attention_mask": record.input_mask,
-            "labels": record.label_ids
+            "labels": record.label_ids,
+            "guid": record.guid
         }
         # return {a: getattr(record, a) for a in ["input_ids", "input_mask", "label_ids", "segment_ids"]}
 
@@ -337,7 +342,10 @@ def load_dataset(
 
     logger.info(f"Reading {val_filename}")
     val_df = pd.read_csv(val_filename, dtype=str)
-    eval_examples = _create_examples(val_df)
+    if val_size == -1:
+        eval_examples = _create_examples(val_df)
+    else:
+        eval_examples = _create_examples(val_df.sample(val_size))
 
     eval_features = convert_examples_to_features(
         eval_examples,
@@ -363,7 +371,7 @@ def load_dataset(
     # datasets = datasets.map(lambda e: {"labels": e["label"]}, batched=True)
 
     datasets.set_format(
-        type="torch", columns=["input_ids", "token_type_ids", "attention_mask", "labels"]
+        type="torch", columns=columns
     )
 
     return datasets
