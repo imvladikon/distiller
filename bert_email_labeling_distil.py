@@ -52,6 +52,7 @@ def main(args):
         torch.set_num_threads(args['n_threads'])
         logger.info(f"Setting #threads to {args['n_threads']}")
 
+
     logger.info(f"device: {device}")
     logger.info(f"numbers of gpu: {torch.cuda.device_count()}")
     logger.info(f'teacher model: {str(args.teacher_model_name)}')
@@ -199,6 +200,7 @@ def main(args):
     wandb_logger = None
     if args.use_wandb:
         t_model_name = os.path.basename(teacher_model_name) if os.path.isabs(teacher_model_name) else teacher_model_name
+        student_model_name = args.student_model_name
         s_model_name = os.path.basename(student_model_name) if os.path.isabs(student_model_name) else student_model_name
         s_model_name = f"{s_model_name}_T-{args.temperature}"
         wandb_logger = WandbLogger(project="distill_bert",
