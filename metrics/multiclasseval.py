@@ -18,11 +18,12 @@ _KWARGS_DESCRIPTION = """
 @datasets.utils.file_utils.add_start_docstrings(_DESCRIPTION, _KWARGS_DESCRIPTION)
 class Multiclasseval(datasets.Metric):
 
-    def __init__(self, *args, **kwargs):
-        super(Multiclasseval, self).__init__(args, kwargs)
-
-        self.threshold = kwargs.get("threshold", 0.5)
-        self.num_classes = kwargs.get("num_classes", None)
+    # TODO: bug with buffer writer , fix it. currently need to use monkey patching
+    # def __init__(self, *args, **kwargs):
+    #     super(Multiclasseval, self).__init__(args, kwargs)
+    #
+    #     self.threshold = kwargs.get("threshold", 0.5)
+    #     self.num_classes = kwargs.get("num_classes", None)
 
     def _info(self):
         return datasets.MetricInfo(
@@ -151,6 +152,8 @@ class Multiclasseval(datasets.Metric):
 
         return scores
 
+Multiclasseval.threshold = 0.5
+Multiclasseval.num_classes = None
 
 if __name__ == '__main__':
     # from datasets import load_metric
@@ -158,7 +161,10 @@ if __name__ == '__main__':
 
     # metric = load_metric(str(ROOT_DIR / 'metrics' / 'multiclasseval.py'))
 
-    metric = Multiclasseval(threshold = 0.8, num_classes=4)
+    metric = Multiclasseval()
+    metric.threshold = 0.8
+    metric.num_classes = 4
+
 
     predictions = [[0.3, 0.7, 0.9, 0.1], [0.9, 0, 1, 0], [0, 0, 0, 1]]
     target = [[1, 0, 0, 1], [1, 1, 1, 0], [0, 0, 0, 1]]

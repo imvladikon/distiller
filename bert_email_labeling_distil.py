@@ -143,6 +143,9 @@ def main(args):
     metric = load_metric(str(ROOT_DIR / 'metrics' / 'multiclasseval.py'),
                          threshold=args.threshold,
                          num_classes=len(label_list))
+    metric.threshold = args.threshold
+    metric.num_classes = len(label_list)
+
     # regression is setting to True, for avoiding of calculating logits.argmax(-1) in HFMetric
     metric_callback = LoaderMetricCallback(
         metric=HFMetric(metric=metric,
