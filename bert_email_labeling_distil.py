@@ -156,7 +156,6 @@ def main(args):
     if args.use_wandb:
         import os
         os.environ["WANDB_API_KEY"] = args.wandb_token
-        wandb.watch(student_model, log_freq=100)
 
     callbacks = [
         # metric_callback,
@@ -178,18 +177,20 @@ def main(args):
     ]
     wandb_logger = None
     if args.use_wandb:
-        wandb_logger = WandbLogger(project="wandb_test", name=f"distill_t{teacher_model_name}_s{student_model_name}")
+        t_model_name = os.path.basename(teacher_model_name) if os.path.isabs(teacher_model_name) else teacher_model_name
+        s_model_name = os.path.basename(student_model_name) if os.path.isabs(student_model_name) else student_model_name
+        wandb_logger = WandbLogger(project="distill_bert",
+                                   name=f"distill_t_{t_model_name}_s_{s_model_name}")
         run = wandb_logger.run
-        run.config = {
+        run.config.update({
             **dict(args),
             "student_hidden_size": student_model.config.hidden_size,
             "student_num_hidden_layers": student_model.config.num_hidden_layers,
             "student_num_attention_heads": student_model.config.num_attention_heads,
             **loss_weights
-        }
-        run.tags.append(teacher_model_name)
-        run.tags.append(student_model_name)
-        run.update()
+        })
+        run.tags = [t_model_name, s_model_name]
+        wandb.watch(student_model)
 
     # callbacks = [WandbLogger(project="catalyst", name='Example'), logging_params = {params}]
     if args.use_wandb:
@@ -203,7 +204,7 @@ def main(args):
             minimize_valid_metric=False,
             valid_loader="valid",
             verbose=True,
-            loggers=[wandb_logger]
+            loggers={"wandb_logger":wandb_logger}
         )
     else:
         runner.train(
@@ -261,7 +262,7 @@ if __name__ == "__main__":
     parser.add_argument("--fp16", default=False, type=bool, required=False)
     parser.add_argument("--loss_scale", default=128, type=int, required=False)
     parser.add_argument("--labels_list", default=labels, type=list, required=False)
-    parser.add_argument("--use_wandb", default=False, type=bool, required=False)
+    parser.add_argument("--use_wandb", default=True, type=bool, required=False)
     parser.add_argument("--wandb_token", default='', type=str, required=False)
     parser.add_argument("--temperature", default=1, type=int, required=False)
     parser.add_argument("--kl_div_loss_weight", default=0.2, type=float, required=False)
