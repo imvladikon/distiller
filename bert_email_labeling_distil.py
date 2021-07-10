@@ -80,13 +80,13 @@ def main(args):
 
         for f in glob.glob(f"{args.additional_data}/*.csv"):
             if not os.path.exists(f): continue
-            f = str(ROOT_DIR/"data/0/train_weak_label_bin_email_id.csv")
+            f = str(ROOT_DIR / "data/0/train_weak_label_bin_email_id.csv")
             new_ds = load_dataset(
                 train_filename=f,
                 tokenizer=tokenizer,
                 max_seq_length=512,
                 train_format_with_proba=True,
-                threshold = args.threshold
+                threshold=args.threshold
             )
             ds["train"] = concatenate_datasets([ds["train"], new_ds["train"]])
 
@@ -227,7 +227,7 @@ def main(args):
             minimize_valid_metric=False,
             valid_loader="valid",
             verbose=True,
-            loggers={"wandb_logger":wandb_logger}
+            loggers={"wandb_logger": wandb_logger}
         )
     else:
         runner.train(
@@ -242,9 +242,11 @@ def main(args):
             verbose=True
         )
 
-    output_model_dir = Path(args.output_model_dir) / student_model_name
+    output_model_dir = Path(args.output_model_dir) / s_model_name
     output_model_dir.mkdir(parents=True, exist_ok=True)
     student_model.save_pretrained(output_model_dir)
+    if args.use_wandb:
+        wandb.save(output_model_dir)
 
 
 if __name__ == "__main__":
@@ -292,7 +294,8 @@ if __name__ == "__main__":
     parser.add_argument("--mse_loss_weight", default=0.3, type=float, required=False)
     parser.add_argument("--task_loss_weight", default=0.5, type=float, required=False)
     parser.add_argument("--threshold", default=0.5, type=float, required=False)
-    parser.add_argument("--additional_data", default=str(ROOT_DIR / 'data' / 'unlabeled_data'), type=str, required=False)
+    parser.add_argument("--additional_data", default=str(ROOT_DIR / 'data' / 'unlabeled_data'), type=str,
+                        required=False)
 
     args = parser.parse_args()
     args = vars(args)
