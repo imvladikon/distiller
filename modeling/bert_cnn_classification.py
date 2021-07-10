@@ -104,6 +104,21 @@ class BertForClassificationCNN(BertPreTrainedModel):
             attentions=outputs.attentions,
         )
 
+    def freeze_bert_encoder(self):
+        for param in self.bert.parameters():
+            param.requires_grad = False
+
+    def unfreeze_bert_encoder(self, unfreeze=None):
+        if unfreeze is None:
+            unfreeze = ['10', '11', 'pooler']
+
+        self.freeze_bert_encoder()
+
+        for name, param in self.bert.named_parameters():
+            if any(t in name for t in unfreeze):
+                # logger.info(f'Unfreezing {name}')
+                param.requires_grad = True
+
 if __name__ == '__main__':
     labels = ['contract',
               'ooo',

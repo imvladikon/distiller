@@ -129,6 +129,7 @@ class Multiclasseval(datasets.Metric):
         scores["matthews_corrcoef"] = matthews_corrcoef
 
         try:
+            # TODO: fix no positive cases
             aucroc_macro = torchmetrics.AUROC(num_classes=num_classes, average="macro")(
                 predictions,
                 target)
