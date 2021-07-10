@@ -157,6 +157,10 @@ def _compute(
         predictions,
         target)
 
+    matthews_corrcoef = torchmetrics.MatthewsCorrcoef(num_classes=num_classes, threshold=threshold)(
+        predictions,
+        target)
+
     # scores = {
     #     type_name: {
     #         "precision": score["precision"],
@@ -180,6 +184,7 @@ def _compute(
     scores["overall_recall"] = recall_samples
     scores["overall_f1"] = f1_samples
     scores["overall_accuracy"] = accuracy_samples
+    scores["matthews_corrcoef"] = matthews_corrcoef
 
     return scores
 

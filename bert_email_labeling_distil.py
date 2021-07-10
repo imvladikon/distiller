@@ -119,12 +119,17 @@ def main(args):
         device=device
     ), loaders="train")
 
-    kl_div = ControlFlowCallback(KLDivCallback(temperature=1), loaders="train")
+    kl_div = ControlFlowCallback(KLDivCallback(temperature=args.temperature), loaders="train")
 
+    loss_weights = {
+        "kl_div_loss": args.kl_div_loss_weight,
+        "mse_loss": args.mse_loss_weight,
+        "task_loss": args.task_loss_weight
+    }
     aggregator = ControlFlowCallback(
         MetricAggregationCallback(
             prefix="loss",
-            metrics={"kl_div_loss": 0.2, "mse_loss": 0.3, "task_loss": 0.5},
+            metrics=loss_weights,
             mode="weighted_sum",
         ),
         loaders="train",
@@ -136,10 +141,11 @@ def main(args):
     student_model.config.output_hidden_states = True
 
     metric_callback = LoaderMetricCallback(
-        metric=HFMetric(metric=load_metric(str(ROOT_DIR / 'metrics' / 'seqeval.py'), threshold=0.8), regression=True),
+        metric=HFMetric(metric=load_metric(str(ROOT_DIR / 'metrics' / 'seqeval.py'), threshold=args.threshold),
+                        regression=True),
         input_key="s_logits", target_key="labels",
     )
-    # load_metric("f1")
+
     if args.use_wandb:
         import os
         os.environ["WANDB_API_KEY"] = args.wandb_token
@@ -171,11 +177,14 @@ def main(args):
             **dict(args),
             "student_hidden_size": student_model.config.hidden_size,
             "student_num_hidden_layers": student_model.config.num_hidden_layers,
-            "student_num_attention_heads": student_model.config.num_attention_heads
+            "student_num_attention_heads": student_model.config.num_attention_heads,
+            **loss_weights
         }
         run.tags.append(teacher_model_name)
         run.tags.append(student_model_name)
         run.update()
+
+    # callbacks = [WandbLogger(project="catalyst", name='Example'), logging_params = {params}]
 
     runner.train(
         model=torch.nn.ModuleDict({"teacher": teacher_model, "student": student_model}),
@@ -237,6 +246,12 @@ if __name__ == "__main__":
     parser.add_argument("--labels_list", default=labels, type=list, required=False)
     parser.add_argument("--use_wandb", default=False, type=bool, required=False)
     parser.add_argument("--wandb_token", default='', type=str, required=False)
+    parser.add_argument("--temperature", default=1, type=int, required=False)
+    parser.add_argument("--kl_div_loss_weight", default=0.2, type=float, required=False)
+    parser.add_argument("--mse_loss_weight", default=0.3, type=float, required=False)
+    parser.add_argument("--task_loss_weight", default=0.5, type=float, required=False)
+    parser.add_argument("--threshold", default=0.5, type=float, required=False)
+
 
     args = parser.parse_args()
     args = vars(args)
