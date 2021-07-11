@@ -268,11 +268,11 @@ if __name__ == "__main__":
     parser.add_argument("--teacher_model_name", default=teacher_model_name, type=str, required=False)
     parser.add_argument("--do_train", default=True, type=bool, required=False)
     parser.add_argument("--do_eval", default=True, type=bool, required=False)
-    parser.add_argument("--train_filename", default=str(ROOT_DIR / "data" / "0" / "train_weak_label_bin_email_id.csv"),
+    parser.add_argument("--train_filename", default=str(ROOT_DIR / "data" / "0" / "train.csv"),
                         type=str, required=False)
     parser.add_argument("--val_filename", default=str(ROOT_DIR / "data" / "0" / "test.csv"), type=str, required=False)
     parser.add_argument("--one_cycle_train", default=True, type=bool, required=False)
-    parser.add_argument("--train_format_with_proba", default=True, type=bool, required=False)
+    parser.add_argument("--train_format_with_proba", default=False, type=bool, required=False)
     parser.add_argument("--train_size", default=-1, type=int, required=False)
     parser.add_argument("--val_size", default=-1, type=int, required=False)
     parser.add_argument("--data_dir", default=str(ROOT_DIR / 'data'), type=str, required=False)
