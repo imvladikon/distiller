@@ -127,9 +127,9 @@ def main(args):
         val_filename=args.val_filename,
         tokenizer=tokenizer,
         max_seq_length=512,
-        # train_format_with_proba=args.train_format_with_proba,
-        train_size=5,  # args.train_size,
-        val_size=5,  # args.val_size
+        train_format_with_proba=args.train_format_with_proba,
+        train_size=args.train_size,
+        val_size=args.val_size
     )
 
     trainer = Trainer(
@@ -196,9 +196,9 @@ def main_train(args):
         val_filename=args.val_filename,
         tokenizer=tokenizer,
         max_seq_length=512,
-        # train_format_with_proba=args.train_format_with_proba,
-        train_size=5,  # args.train_size,
-        val_size=5,  # args.val_size
+        train_format_with_proba=args.train_format_with_proba,
+        train_size=args.train_size,
+        val_size=args.val_size
     )
 
     trainer = Trainer(
@@ -248,7 +248,7 @@ if __name__ == "__main__":
                         type=str, required=False)
     parser.add_argument("--val_filename", default=str(ROOT_DIR / "data" / "0" / "test.csv"), type=str, required=False)
     parser.add_argument("--one_cycle_train", default=True, type=bool, required=False)
-    parser.add_argument("--train_format_with_proba", default=True, type=bool, required=False)
+    parser.add_argument("--train_format_with_proba", default=False, type=bool, required=False)
     parser.add_argument("--train_size", default=-1, type=int, required=False)
     parser.add_argument("--val_size", default=-1, type=int, required=False)
     parser.add_argument("--data_dir", default=str(ROOT_DIR / 'data'), type=str, required=False)
@@ -289,4 +289,4 @@ if __name__ == "__main__":
 
     os.environ["WANDB_API_KEY"] = args.wandb_token
 
-    main(args)
+    main_train(args)
