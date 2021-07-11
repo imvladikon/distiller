@@ -42,7 +42,7 @@ args = {
     "n_threads": 4,
     "learning_rate": 3e-5,
     "num_train_epochs": 3,
-    "warmup_linear": True,
+    "warmup_linear": True, # TODO: has a bug
     "warmup_proportion": 0.1,
     "no_cuda": False,
     "local_rank": -1,

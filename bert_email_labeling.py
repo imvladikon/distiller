@@ -88,20 +88,6 @@ if __name__ == '__main__':
         val_size=args.val_size
     )
 
-    if args.additional_data:
-        import glob
-        add_ds = []
-        for f in glob.glob(f"{args.additional_data}/*.csv"):
-            if not os.path.exists(f): continue
-            new_ds = load_dataset(
-                train_filename=f,
-                tokenizer=tokenizer,
-                max_seq_length=512,
-                train_format_with_proba=True
-            )
-            add_ds.append(new_ds)
-        concatenate_datasets(ds, *add_ds)
-
     # loaders = datasets_as_loaders(ds, batch_size=64)
 
     train_features = ds["train"]

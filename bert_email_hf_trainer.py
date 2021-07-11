@@ -89,7 +89,7 @@ def main(args):
             if state.is_local_process_zero:
                 print(logs)
 
-    model_checkpoint = "bert-base-uncased"
+    model_checkpoint = "bert-large-uncased"
     batch_size = 16
     label_list = labels
     metric = Multiclasseval()
@@ -133,7 +133,7 @@ def main(args):
     )
 
     trainer = Trainer(
-        model,
+        teacher_model,
         training_args,
         train_dataset=ds["train"],
         eval_dataset=ds["test"],
