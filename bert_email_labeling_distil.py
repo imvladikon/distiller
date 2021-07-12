@@ -211,8 +211,8 @@ def main(args):
 
         def close_log(self) -> None:
             """Closes the logger."""
-            student_model.save_pretrained(output_model_dir)
-            wandb.save(output_model_dir)
+            student_model.save_pretrained(str(output_model_dir))
+            wandb.save(str(output_model_dir))
             self.run.finish()
 
         WandbLogger.close_log = close_log
