@@ -204,7 +204,8 @@ def main(args):
         s_model_name = os.path.basename(student_model_name) if os.path.isabs(student_model_name) else student_model_name
         s_model_name = f"{s_model_name}_T-{args.temperature}"
         wandb_logger = WandbLogger(project="distill_bert",
-                                   name=f"distill_t_{t_model_name}_s_{s_model_name}")
+                                   name=f"distill_t_{t_model_name}_s_{s_model_name}",
+                                   note=args.wandb_note)
 
         output_model_dir = Path(args.output_model_dir) / s_model_name
         output_model_dir.mkdir(parents=True, exist_ok=True)
@@ -212,7 +213,7 @@ def main(args):
         def close_log(self) -> None:
             """Closes the logger."""
             student_model.save_pretrained(str(output_model_dir))
-            wandb.save(str(output_model_dir))
+            wandb.save(f"{str(output_model_dir)}/*")
             self.run.finish()
 
         WandbLogger.close_log = close_log
@@ -298,6 +299,7 @@ if __name__ == "__main__":
     parser.add_argument("--labels_list", default=labels, type=list, required=False)
     parser.add_argument("--use_wandb", default=False, type=bool, required=False)
     parser.add_argument("--wandb_token", default='', type=str, required=False)
+    parser.add_argument("--wandb_note", default='', type=str, required=False)
     parser.add_argument("--temperature", default=1, type=float, required=False)
     parser.add_argument("--kl_div_loss_weight", default=0.2, type=float, required=False)
     parser.add_argument("--mse_loss_weight", default=0.3, type=float, required=False)
