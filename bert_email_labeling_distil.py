@@ -311,3 +311,11 @@ if __name__ == "__main__":
     args = dotdict(args)
     set_seed(args.seed)
     main(args)
+
+    # project: Optional[str] = None,
+    # entity: Optional[str] = None,
+    # reinit: bool = None,
+    # tags: Optional[Sequence] = None,
+    # group: Optional[str] = None,
+    # name: Optional[str] = None,
+    # notes: Optional[str] = None,

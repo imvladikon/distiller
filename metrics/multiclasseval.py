@@ -19,6 +19,7 @@ _KWARGS_DESCRIPTION = """
 class Multiclasseval(datasets.Metric):
 
     # TODO: bug with buffer writer , fix it. currently need to use monkey patching
+    # TODO: add class weights
     # def __init__(self, *args, **kwargs):
     #     super(Multiclasseval, self).__init__(args, kwargs)
     #
@@ -103,6 +104,17 @@ class Multiclasseval(datasets.Metric):
             predictions,
             target)
 
+        f2_samples = torchmetrics.FBeta(beta=2, threshold=threshold, multiclass=True, average="samples",
+                                     mdmc_average="samplewise")(
+            predictions,
+            target)
+        f2_micro = torchmetrics.FBeta(beta=2, threshold=threshold, average="micro", num_classes=num_classes)(
+            predictions,
+            target)
+        f2_macro = torchmetrics.FBeta(beta=2, threshold=threshold, average="macro", num_classes=num_classes)(
+            predictions,
+            target)
+
         # scores = {
         #     type_name: {
         #         "precision": score["precision"],
@@ -117,16 +129,21 @@ class Multiclasseval(datasets.Metric):
         scores["precision_micro"] = precision_micro
         scores["recall_micro"] = recall_micro
         scores["f1_micro"] = f1_micro
+        scores["f2_micro"] = f2_micro
 
         scores["precision_macro"] = precision_macro
         scores["recall_macro"] = recall_macro
         scores["f1_macro"] = f1_macro
+        scores["f2_macro"] = f2_macro
 
         scores["overall_precision"] = precision_samples
         scores["overall_recall"] = recall_samples
         scores["overall_f1"] = f1_samples
+        scores["overall_f2"] = f2_samples
         scores["overall_accuracy"] = accuracy_samples
         scores["matthews_corrcoef"] = matthews_corrcoef
+
+
 
         try:
             # TODO: fix no positive cases
