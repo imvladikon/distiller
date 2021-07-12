@@ -28,6 +28,11 @@ def get_student_models(hidden_size, num_layers):
     num_attention_heads = num_hidden_num_attention_heads_mapping[hidden_size]
     return f"google/bert_uncased_L-{num_layers}_H-{hidden_size}_A-{num_attention_heads}"
 
+def all_google_students():
+    for hidden_size in [128, 256, 512, 768]:
+        for num_layers in [2, 4, 6, 8, 10, 12]:
+            yield get_student_models(hidden_size, num_layers)
+
 
 if __name__ == '__main__':
     from transformers import AutoModel
