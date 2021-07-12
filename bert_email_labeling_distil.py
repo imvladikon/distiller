@@ -215,7 +215,7 @@ def main(args):
             wandb.save(output_model_dir)
             self.run.finish()
 
-        wandb_logger.close_log = close_log
+        WandbLogger.close_log = close_log
 
         run = wandb_logger.run
         run.config.update({

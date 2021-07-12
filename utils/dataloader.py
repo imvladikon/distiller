@@ -315,8 +315,8 @@ def load_dataset(
 
     processor = BinaryLabelTextProcessor(labels)
     label_list = processor.get_labels()
-    num_labels = len(label_list)
 
+    logger.info("LOOKING AT {}".format(train_filename))
     if train_format_with_proba:
         data_df = pd.read_csv(train_filename).reset_index(drop=True)
         lbls = ['proba_' + el.lower() for el in label_list]
@@ -326,7 +326,6 @@ def load_dataset(
                                    labels=x[lbls].tolist()),
             axis=1).tolist()
     else:
-        logger.info("LOOKING AT {}".format(train_filename))
         data_df = pd.read_csv(train_filename, dtype=str)
         if train_size == -1:
             train_examples = _create_examples(data_df)
@@ -336,6 +335,7 @@ def load_dataset(
     if not train_format_with_proba:
         train_features = convert_examples_to_features(train_examples, label_list, max_seq_length, tokenizer)
     else:
+        logger.info("proba threshold {}".format(threshold))
         train_features = convert_examples_to_features(train_examples,
                                                       label_list,
                                                       max_seq_length,
