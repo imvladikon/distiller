@@ -128,8 +128,8 @@ def main(args):
         tokenizer=tokenizer,
         max_seq_length=512,
         train_format_with_proba=args.train_format_with_proba,
-        train_size=args.train_size,
-        val_size=args.val_size
+        train_size=1,#args.train_size,
+        val_size=1,#args.val_size
     )
 
     trainer = Trainer(
