@@ -57,7 +57,7 @@ def main(args):
     logger.info(f'teacher model: {str(args.teacher_model_name)}')
     logger.info(f'student model: {str(args.student_model_name)}')
 
-    tokenizer = AutoTokenizer.from_pretrained(args.bert_tokenizer)
+    tokenizer = AutoTokenizer.from_pretrained(args.bert_tokenizer, do_lower_case=args.do_lower_case)
 
     label_list = labels
     teacher_model = BertForMultiLabelSequenceClassification.from_pretrained(args.teacher_model_name,
@@ -73,7 +73,7 @@ def main(args):
         train_size=args.train_size,
         val_size=args.val_size
     )
-    if args.additional_data:
+    if args.additional_data: # aug_train
         import glob
         import os
         from datasets import concatenate_datasets
@@ -203,8 +203,8 @@ def main(args):
         s_model_name = os.path.basename(student_model_name) if os.path.isabs(student_model_name) else student_model_name
         s_model_name = f"{s_model_name}_T-{args.temperature}"
         wandb_logger = WandbLogger(project="distill_bert",
-                                   name=f"distill_t_{t_model_name}_s_{s_model_name}",
-                                   note=args.wandb_note)
+                                   name=f"distill_t_{t_model_name}_s_{s_model_name}")
+                                   #note=args.wandb_note)
 
         output_model_dir = Path(args.output_model_dir) / s_model_name
         output_model_dir.mkdir(parents=True, exist_ok=True)
