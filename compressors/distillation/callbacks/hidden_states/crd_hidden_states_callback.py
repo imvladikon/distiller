@@ -1,10 +1,12 @@
-from catalyst.core import Callback
+from typing import Dict
+
+from transformers import TrainerCallback, TrainingArguments, TrainerState, TrainerControl
 
 from compressors.distillation.callbacks.order import CallbackOrder
 from compressors.distillation.losses import CRDLoss
 
 
-class CRDHiddenStatesCallback(Callback):
+class CRDHiddenStatesCallback(TrainerCallback):
     """
     CONTRASTIVE REPRESENTATION DISTILLATION for difference between hidden states of teacher and student model.
 
@@ -47,13 +49,22 @@ class CRDHiddenStatesCallback(Callback):
             nce_m=nce_m,
         )
 
-    def on_batch_end(self, runner):
-        s_hiddens = runner.batch["s_hidden_states"]
-        t_hiddens = runner.batch["t_hidden_states"]
+    def on_step_end(self,
+                    args: TrainingArguments,
+                    state: TrainerState,
+                    control: TrainerControl,
+                    metrics: Dict[str, float] = None,
+                    **kwargs):
+
+        s_hiddens = metrics["s_hidden_states"]
+        t_hiddens = metrics["t_hidden_states"]
         if self.last_only:
             s_hiddens = s_hiddens[-1]
             t_hiddens = t_hiddens[-1]
-        runner.batch_metrics[self.output_key] = self.criterion(s_hiddens, t_hiddens)
+        metrics[self.output_key] = self.criterion(s_hiddens, t_hiddens)
+
+
+
 
 
 __all__ = ["CRDHiddenStatesCallback"]

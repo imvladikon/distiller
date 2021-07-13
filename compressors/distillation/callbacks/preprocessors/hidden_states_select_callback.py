@@ -1,12 +1,12 @@
-from typing import List, Union
+from typing import List, Union, Dict
 
-from catalyst.core import Callback
+from transformers import TrainerCallback, TrainingArguments, TrainerState, TrainerControl
 
 from compressors.distillation.callbacks.order import CallbackOrder
 from compressors.distillation.hidden_states import hidden_states_select
 
 
-class HiddenStatesSelectCallback(Callback):
+class HiddenStatesSelectCallback(TrainerCallback):
     def __init__(self, layers: Union[int, List[int]], hiddens_key: str = "t_hidden_states"):
         """
 
@@ -18,10 +18,15 @@ class HiddenStatesSelectCallback(Callback):
         self.layers = layers
         self.hiddens_key = hiddens_key
 
-    def on_batch_end(self, runner):
-        runner.batch[self.hiddens_key] = hidden_states_select(
-            hidden_states=runner.batch[self.hiddens_key], layers=self.layers
-        )
+    def on_step_end(self,
+                    args: TrainingArguments,
+                    state: TrainerState,
+                    control: TrainerControl,
+                    metrics: Dict[str, float] = None,
+                    **kwargs):
+        metrics[self.hiddens_key] = hidden_states_select(
+            hidden_states=metrics[self.hiddens_key], layers=self.layers
+        )  # runner.batch
 
 
 __all__ = ["HiddenStatesSelectCallback"]

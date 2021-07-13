@@ -1,8 +1,10 @@
 from catalyst.runners import Runner
 from catalyst.utils import get_nn_from_ddp_module, set_requires_grad
 
+from transformers import Trainer, TrainerState, TrainerCallback
 
-class HFDistilRunner(Runner):
+
+class HFDistilRunner(Trainer):
     """Simple runner for transformer model.
     """
 

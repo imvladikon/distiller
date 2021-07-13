@@ -1,10 +1,12 @@
-from catalyst.core import Callback
+from typing import Dict
+
+from transformers import TrainerCallback, TrainingArguments, TrainerState, TrainerControl
 
 from compressors.distillation.callbacks.order import CallbackOrder
 from compressors.distillation.losses import MSEHiddenStatesLoss
 
 
-class MSEHiddenStatesCallback(Callback):
+class MSEHiddenStatesCallback(TrainerCallback):
     """
     MSE loss aka Hint loss for difference between hidden
     states of teacher and student model.
@@ -30,7 +32,7 @@ class MSEHiddenStatesCallback(Callback):
         Args:
             output_key: name for loss. Defaults to mse_loss.
         """
-        super().__init__(order=CallbackOrder.Metric)
+        # super().__init__(order=CallbackOrder.Metric)
         self.output_key = output_key
         self.criterion = MSEHiddenStatesLoss(
             normalize=normalize,
@@ -42,11 +44,16 @@ class MSEHiddenStatesCallback(Callback):
         if device is not None:
             self.criterion.to(device)
 
-    def on_batch_end(self, runner):
-        runner.batch_metrics[self.output_key] = self.criterion(
-            s_hidden_states=runner.batch["s_hidden_states"],
-            t_hidden_states=runner.batch["t_hidden_states"],
-        )
+    def on_step_end(self,
+                    args: TrainingArguments,
+                    state: TrainerState,
+                    control: TrainerControl,
+                    metrics: Dict[str, float] = None,
+                    **kwargs):
 
+        metrics[self.output_key] = self.criterion(
+            s_hidden_states=metrics["s_hidden_states"],
+            t_hidden_states=metrics["t_hidden_states"],
+        )
 
 __all__ = ["MSEHiddenStatesCallback"]

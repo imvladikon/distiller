@@ -1,10 +1,7 @@
-from typing import Any, Callable, Dict, List, TYPE_CHECKING, Union
+from typing import Any, Callable, Dict, List, Union
 
-from catalyst.core.callback import Callback, CallbackNode, CallbackOrder
 import torch
-
-if TYPE_CHECKING:
-    from catalyst.core.runner import IRunner
+from transformers import Trainer
 
 
 def _sum_aggregation(x):
@@ -15,7 +12,7 @@ def _mean_aggregation(x):
     return torch.mean(torch.stack(x))
 
 
-class MetricAggregationCallback(Callback):
+class MetricAggregationCallback(Trainer):
     """A callback to aggregate several metrics in one value.
 
     Args:
