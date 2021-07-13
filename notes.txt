@@ -3,3 +3,9 @@
 3. distillbert ft.
 4. tinybert ft.
 5. bert distilled on task
+
+
+check:
+1. impact temperature
+2. impact losses
+3. does make sense train firstly on unlabeled, freeze bottom layers and then train on task

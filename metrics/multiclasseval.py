@@ -178,6 +178,20 @@ class Multiclasseval(datasets.Metric):
 Multiclasseval.threshold = 0.5
 Multiclasseval.num_classes = None
 
+def generate_plausible_inputs_multilabel(num_classes, num_batches, batch_size):
+    correct_targets = torch.randint(high=num_classes, size=(num_batches, batch_size))
+    preds = torch.rand(num_batches, batch_size, num_classes)
+    targets = torch.zeros_like(preds, dtype=torch.long)
+    for i in range(preds.shape[0]):
+        for j in range(preds.shape[1]):
+            targets[i, j, correct_targets[i, j]] = 1
+    preds += torch.rand(num_batches, batch_size, num_classes) * targets / 3
+
+    preds = preds / preds.sum(dim=2, keepdim=True)
+
+    return preds, targets
+
+
 if __name__ == '__main__':
     # from datasets import load_metric
     # from const import ROOT_DIR
@@ -197,4 +211,15 @@ if __name__ == '__main__':
     predictions = [[1, 0, 0, 1], [1, 0, 1, 0], [0, 1, 0, 1]]
     target = [[1, 0, 0, 1], [1, 0, 1, 0], [0, 1, 0, 1]]
     scores = metric.compute(predictions=predictions, references=target)
+    print(scores)
+
+    metric = Multiclasseval()
+    metric.threshold = 0.5
+    metric.num_classes = 8
+
+    batch_preds, batch_targets = generate_plausible_inputs_multilabel(num_classes=8, num_batches=4, batch_size=16)
+
+    for predictions, target in zip(batch_preds, batch_targets):
+        metric.add_batch(predictions=predictions, references=target)
+    scores = metric.compute()
     print(scores)

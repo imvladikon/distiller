@@ -6,6 +6,7 @@ from collections import Counter, OrderedDict
 from typing import List, Optional
 
 import pandas as pd
+import torch
 import transformers
 from datasets import Dataset
 from datasets import DatasetDict

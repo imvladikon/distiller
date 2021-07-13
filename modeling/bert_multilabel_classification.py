@@ -255,7 +255,7 @@ if __name__ == '__main__':
     id2label = {k: v for k, v in enumerate(labels)}
     label2id = {v: k for k, v in id2label.items()}
 
-    model = BertForMultiLabelSequenceClassification.from_pretrained("bert-base-uncased", num_labels=len(labels))
+    model = BertForMultiLabelSequenceClassification.from_pretrained("bert-base-uncased", num_labels=len(label2id))
     model.config.label2id = label2id
     model.config.id2label = id2label
 
