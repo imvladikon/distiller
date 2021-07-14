@@ -105,7 +105,7 @@ class Multiclasseval(datasets.Metric):
             target)
 
         f2_samples = torchmetrics.FBeta(beta=2, threshold=threshold, multiclass=True, average="samples",
-                                     mdmc_average="samplewise")(
+                                        mdmc_average="samplewise")(
             predictions,
             target)
         f2_micro = torchmetrics.FBeta(beta=2, threshold=threshold, average="micro", num_classes=num_classes)(
@@ -143,8 +143,6 @@ class Multiclasseval(datasets.Metric):
         scores["overall_accuracy"] = accuracy_samples
         scores["matthews_corrcoef"] = matthews_corrcoef
 
-
-
         try:
             # TODO: fix no positive cases
             aucroc_macro = torchmetrics.AUROC(num_classes=num_classes, average="macro")(
@@ -158,25 +156,28 @@ class Multiclasseval(datasets.Metric):
             aucroc_macro = 0
             aucroc_micro = 0
 
-
         scores["aucroc_macro"] = aucroc_macro
         scores["aucroc_micro"] = aucroc_micro
 
-        # TODO: add scores per class
-        # predictions = torch.FloatTensor(preds)
-        # target = torch.LongTensor(gt)
-        # num_classes = 8
-        # accuracy_per_class = {}
-        # for i in range(num_classes):
-        #     predictions_cls = predictions[i, :]
-        #     target_cls = target[i, :]
-        #     accuracy_per_class[i] = torchmetrics.Accuracy(threshold=threshold)(predictions_cls,
-        #                                                                        target_cls)
+        if self.calculate_per_class:
+            for i in range(num_classes):
+                predictions_cls = predictions[:, i]
+                target_cls = target[:, i]
+                class_name = self.labels[i] if self.labels else f"class_{i}"
+                scores[f"accuracy_{class_name}"] = torchmetrics.Accuracy(threshold=threshold)(predictions_cls,
+                                                                                              target_cls)
+                scores[f"f1_{class_name}"] = torchmetrics.F1(threshold=threshold)(
+                    predictions_cls,
+                    target_cls)
 
         return scores
 
+
 Multiclasseval.threshold = 0.5
 Multiclasseval.num_classes = None
+Multiclasseval.calculate_per_class = False
+Multiclasseval.labels = None
+
 
 def generate_plausible_inputs_multilabel(num_classes, num_batches, batch_size):
     correct_targets = torch.randint(high=num_classes, size=(num_batches, batch_size))
@@ -230,10 +231,28 @@ if __name__ == '__main__':
     metric.threshold = threshold
     metric.num_classes = 4
 
-    predictions = (np.array([[0.3, 0.7, 0.9, 0.1], [0.9, 0, 1, 0], [0, 0, 0, 1]])>threshold).astype("int")
+    predictions = (np.array([[0.3, 0.7, 0.9, 0.1], [0.9, 0, 1, 0], [0, 0, 0, 1]]) > threshold).astype("int")
     target = np.array([[1, 0, 0, 1], [1, 1, 1, 0], [0, 0, 0, 1]])
 
     scores = metric.compute(predictions=predictions, references=target)
     print(scores)
 
     print(classification_report(target, predictions, target_names=["1", "2", "3", "4"]))
+
+    metric = Multiclasseval()
+    metric.threshold = threshold
+    metric.num_classes = 4
+    metric.calculate_per_class = True
+    metric.labels = ["class1", "class2", "class3", "class4"]
+
+    predictions = (np.array([[0.3, 0.7, 0.9, 0.1], [0.9, 0, 1, 0], [0, 0, 0, 1]]) > threshold).astype("int")
+    target = np.array([[1, 0, 0, 1], [1, 1, 1, 0], [0, 0, 0, 1]])
+
+    scores = metric.compute(predictions=predictions, references=target)
+    print(scores)
+
+    predictions = np.array([[1, 0, 0, 1], [1, 1, 1, 0], [0, 0, 0, 1]])
+    target = np.array([[1, 0, 0, 1], [1, 1, 1, 0], [0, 0, 0, 1]])
+
+    scores = metric.compute(predictions=predictions, references=target)
+    print(scores)
