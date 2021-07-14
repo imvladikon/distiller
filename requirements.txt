@@ -11,3 +11,4 @@ datasets
 wandb
 ujson
 seqeval
+pyemd

@@ -19,6 +19,7 @@ class FlswTemperatureScheduler(nn.Module):
     """
     https://arxiv.org/abs/1911.07471
     Preparing Lessons: Improve Knowledge Distillation with Better Supervision
+    Dynamic Temperature Distillation to avoid overly uncertain supervision from teacher model
     """
 
     def __init__(self,
@@ -50,6 +51,7 @@ class CwsmTemperatureScheduler(nn.Module):
     """
     https://arxiv.org/abs/1911.07471
     Preparing Lessons: Improve Knowledge Distillation with Better Supervision
+    Dynamic Temperature Distillation to avoid overly uncertain supervision from teacher model
     """
 
     def __init__(self, beta: float, *args, **kwargs):
