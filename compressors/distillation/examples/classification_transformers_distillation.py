@@ -1,4 +1,4 @@
-from data import load_dataset, load_metric
+from datasets import load_dataset, load_metric
 import torch
 from torch.utils.data import DataLoader
 from tqdm.autonotebook import tqdm, trange

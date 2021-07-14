@@ -202,12 +202,6 @@ if __name__ == '__main__':
     metric.threshold = 0.8
     metric.num_classes = 4
 
-
-    predictions = [[0.3, 0.7, 0.9, 0.1], [0.9, 0, 1, 0], [0, 0, 0, 1]]
-    target = [[1, 0, 0, 1], [1, 1, 1, 0], [0, 0, 0, 1]]
-    scores = metric.compute(predictions=predictions, references=target)
-    print(scores)
-
     predictions = [[1, 0, 0, 1], [1, 0, 1, 0], [0, 1, 0, 1]]
     target = [[1, 0, 0, 1], [1, 0, 1, 0], [0, 1, 0, 1]]
     scores = metric.compute(predictions=predictions, references=target)
@@ -223,3 +217,23 @@ if __name__ == '__main__':
         metric.add_batch(predictions=predictions, references=target)
     scores = metric.compute()
     print(scores)
+
+    from sklearn.metrics import multilabel_confusion_matrix, classification_report
+    import numpy as np
+
+    predictions = np.array([[1, 0, 0, 1], [1, 0, 1, 0], [0, 1, 0, 1]])
+    target = np.array([[1, 0, 0, 1], [1, 0, 1, 0], [0, 1, 0, 1]])
+    # print(multilabel_confusion_matrix(target, predictions, samplewise=True))
+
+    threshold = 0.8
+    metric = Multiclasseval()
+    metric.threshold = threshold
+    metric.num_classes = 4
+
+    predictions = (np.array([[0.3, 0.7, 0.9, 0.1], [0.9, 0, 1, 0], [0, 0, 0, 1]])>threshold).astype("int")
+    target = np.array([[1, 0, 0, 1], [1, 1, 1, 0], [0, 0, 0, 1]])
+
+    scores = metric.compute(predictions=predictions, references=target)
+    print(scores)
+
+    print(classification_report(target, predictions, target_names=["1", "2", "3", "4"]))

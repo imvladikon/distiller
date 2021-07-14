@@ -9,3 +9,19 @@ check:
 1. impact temperature
 2. impact losses
 3. does make sense train firstly on unlabeled, freeze bottom layers and then train on task
+
+
+valid before train
+add samples per second
+rewrite to hf trainer
+
+
+добавить в метрики по классам
+768 из учителя
+учитель - дропнуть
+скипнуть промежуточные слои
+
+F1 , AUCROC при разных слоях (при разных H size)
+добавить inference speed
+
+для лучшей модели P@class, R@class, per classes

@@ -1,20 +1,25 @@
+from typing import Callable
+
+import torch
 from catalyst.core import Callback
 
 from compressors.distillation.callbacks.order import CallbackOrder
 from compressors.distillation.losses import KLDivLoss
+from compressors.distillation.schedulers.temperature_schedulers import ConstantTemperatureScheduler
 
 
 class KLDivCallback(Callback):
     def __init__(
-        self,
-        output_key: str = "kl_div_loss",
-        temperature: float = 1.0,
-        student_logits_key: str = "s_logits",
-        teacher_logits_key: str = "t_logits",
+            self,
+            output_key: str = "kl_div_loss",
+            temperature: float = 1.0,
+            student_logits_key: str = "s_logits",
+            teacher_logits_key: str = "t_logits",
+            scheduler: torch.nn.Module = None
     ):
         super().__init__(order=CallbackOrder.Metric)
         self.output_key = output_key
-        self.criterion = KLDivLoss(temperature=temperature)
+        self.criterion = KLDivLoss(temperature=temperature, scheduler=scheduler)
         self.teacher_logits_key = teacher_logits_key
         self.student_logits_key = student_logits_key
 

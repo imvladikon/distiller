@@ -8,6 +8,7 @@ from catalyst.loggers import WandbLogger
 from datasets import load_metric
 from transformers import AutoTokenizer
 
+from compressors.distillation.schedulers.temperature_schedulers import FlswTemperatureScheduler
 from config.google_students_models import get_student_models, all_google_students
 from modeling.bert_multilabel_classification import BertForMultiLabelSequenceClassification
 
@@ -73,14 +74,13 @@ def main(args):
         train_size=args.train_size,
         val_size=args.val_size
     )
-    if args.additional_data: # aug_train
+    if args.aug_train:
         import glob
         import os
         from datasets import concatenate_datasets
 
-        for f in glob.glob(f"{args.additional_data}/*.csv"):
+        for f in glob.glob(f"{args.aug_train}/*.csv"):
             if not os.path.exists(f): continue
-            f = str(ROOT_DIR / "data/0/train_weak_label_bin_email_id.csv")
             new_ds = load_dataset(
                 train_filename=f,
                 tokenizer=tokenizer,
@@ -103,7 +103,7 @@ def main(args):
 
     num_teacher_layers = teacher_model.config.num_hidden_layers + 1
     num_student_layers = student_model.config.num_hidden_layers + 1
-
+    # TODO: copy weights from teacher
     map_layers = {
         2: [1, 3],
         4: [1, 3, 5, 7],
@@ -136,7 +136,9 @@ def main(args):
         device=device
     ), loaders="train")
 
-    kl_div = ControlFlowCallback(KLDivCallback(temperature=args.temperature), loaders="train")
+    scheduler = FlswTemperatureScheduler(beta=0.5, gamma=0.5)
+    kl_div = ControlFlowCallback(KLDivCallback(temperature=args.temperature, scheduler=scheduler),
+                                 loaders="train")
 
     loss_weights = {
         "kl_div_loss": args.kl_div_loss_weight,
@@ -204,7 +206,7 @@ def main(args):
         s_model_name = f"{s_model_name}_T-{args.temperature}"
         wandb_logger = WandbLogger(project="distill_bert",
                                    name=f"distill_t_{t_model_name}_s_{s_model_name}")
-                                   #note=args.wandb_note)
+        # note=args.wandb_note)
 
         output_model_dir = Path(args.output_model_dir) / s_model_name
         output_model_dir.mkdir(parents=True, exist_ok=True)
@@ -264,7 +266,7 @@ if __name__ == "__main__":
     teacher_model_name = ROOT_DIR / 'models' / 'tuned' / 'tuned_bertreply'
 
     parser = argparse.ArgumentParser(description='Fine-tuning bert')
-    parser.add_argument("--student_model_name", default=student_model_name, type=str, required=True,
+    parser.add_argument("--student_model_name", default=student_model_name, type=str, required=False,
                         help="Path to pre-trained model or shortcut name selected in the list: " + ", ".join(
                             all_google_students()))
     parser.add_argument("--student_config_name", default="", type=str,
@@ -279,7 +281,7 @@ if __name__ == "__main__":
                         help="Whether to run eval on the dev set.")
     parser.add_argument("--train_filename", default=str(ROOT_DIR / "data" / "0" / "train.csv"),
                         type=str, required=False)
-    parser.add_argument("--do_lower_case", type=int, choices=[0, 1],
+    parser.add_argument("--do_lower_case", action='store_true',
                         help="Set this flag if you are using an uncased model.")
     parser.add_argument("--val_filename", default=str(ROOT_DIR / "data" / "0" / "test.csv"), type=str, required=False)
     parser.add_argument("--one_cycle_train", default=True, type=bool, required=False)
@@ -295,19 +297,11 @@ if __name__ == "__main__":
                         help="Pretrained tokenizer name or path if not the same as model_name")
     parser.add_argument("--output_model_dir", default=str(ROOT_DIR / 'models' / 'distill'), type=str, required=False)
     parser.add_argument("--data_output_dir", default=(ROOT_DIR / 'data' / 'class' / 'output'), type=str, required=False)
-    parser.add_argument("--max_seq_length", default=512, type=int, required=False)
     parser.add_argument("--train_batch_size", default=24, type=int, required=False)
     parser.add_argument("--val_batch_size", default=12, type=int, required=False)
     parser.add_argument("--n_threads", default=4, type=int, required=False)
-    parser.add_argument("--learning_rate", default=3e-5, required=False)
-    parser.add_argument("--num_train_epochs", default=5, type=int, required=False)
     parser.add_argument("--warmup_linear", default=0.1, type=float, required=False)
-    parser.add_argument("--no_cuda", default=False, type=bool, required=False)
-    parser.add_argument("--local_rank", default=-1, type=int, required=False)
-    parser.add_argument("--seed", default=42, type=int, required=False)
-    parser.add_argument("--gradient_accumulation_steps", default=1, type=int, required=False)
     parser.add_argument("--optimize_on_cpu", default=True, type=bool, required=False)
-    parser.add_argument("--fp16", default=False, type=bool, required=False)
     parser.add_argument("--loss_scale", default=128, type=int, required=False)
     parser.add_argument("--labels_list", default=labels, type=list, required=False)
     parser.add_argument("--use_wandb", default=False, type=bool, required=False)
@@ -323,7 +317,7 @@ if __name__ == "__main__":
                         help="Batch size per GPU/CPU for evaluation.")
     parser.add_argument('--gradient_accumulation_steps', type=int, default=1,
                         help="Number of updates steps to accumulate before performing a backward/update pass.")
-    parser.add_argument("--learning_rate", default=5e-5, type=float,
+    parser.add_argument("--learning_rate", default=3e-5, type=float,
                         help="The initial learning rate for Adam.")
     parser.add_argument("--weight_decay", default=0.0, type=float,
                         help="Weight deay if we apply some.")
@@ -331,13 +325,12 @@ if __name__ == "__main__":
                         help="Epsilon for Adam optimizer.")
     parser.add_argument("--max_grad_norm", default=1.0, type=float,
                         help="Max gradient norm.")
-    parser.add_argument("--num_train_epochs", default=3.0, type=float,
+    parser.add_argument("--num_train_epochs", default=5, type=int,
                         help="Total number of training epochs to perform.")
     parser.add_argument("--max_steps", default=-1, type=int,
                         help="If > 0: set total number of training steps to perform. Override num_train_epochs.")
     parser.add_argument("--warmup_steps", default=0, type=int,
                         help="Linear warmup over warmup_steps.")
-
     parser.add_argument('--logging_steps', type=int, default=50,
                         help="Log every X updates steps.")
     parser.add_argument('--save_steps', type=int, default=50,
@@ -360,9 +353,9 @@ if __name__ == "__main__":
     parser.add_argument("--mse_loss_weight", default=0.3, type=float, required=False)
     parser.add_argument("--task_loss_weight", default=0.5, type=float, required=False)
     parser.add_argument("--threshold", default=0.5, type=float, required=False)
-    parser.add_argument("--additional_data", default=str(ROOT_DIR / 'data' / 'unlabeled_data'), type=str,
+    parser.add_argument("--aug_train", default=str(ROOT_DIR / 'data' / 'unlabeled_data'), type=str,
                         required=False)
-    parser.add_argument("--output_dir", default=None, type=str, required=True,
+    parser.add_argument("--output_dir", default=None, type=str, required=False,
                         help="The output directory where the model predictions and checkpoints will be written.")
 
     args = parser.parse_args()

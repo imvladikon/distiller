@@ -40,7 +40,7 @@ class LambdaPreprocessCallback(Callback):
 
     def on_batch_end(self, runner):
 
-        if isinstance(self.keys_to_apply, list):
+        if isinstance(self.keys_to_apply, list): # ['s_hidden_states', 't_hidden_states']
             fn_inp = [runner.batch[key] for key in self.keys_to_apply]
             fn_output = self.lambda_fn(*fn_inp)
             if isinstance(fn_output, tuple):
