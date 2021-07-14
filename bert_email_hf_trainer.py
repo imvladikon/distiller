@@ -170,6 +170,102 @@ def main_train(args):
             if state.is_local_process_zero:
                 print(logs)
 
+        def on_init_end(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
+            """
+            Event called at the end of the initialization of the :class:`~transformers.Trainer`.
+            """
+            pass
+
+        def on_train_begin(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
+            """
+            Event called at the beginning of training.
+            """
+            pass
+
+        def on_train_end(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
+            """
+            Event called at the end of training.
+            """
+            pass
+
+        def on_epoch_begin(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
+            """
+            Event called at the beginning of an epoch.
+            """
+            pass
+
+        def on_epoch_end(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
+            """
+            Event called at the end of an epoch.
+            """
+            pass
+
+        def on_step_begin(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
+            """
+            Event called at the beginning of a training step. If using gradient accumulation, one training step might take
+            several inputs.
+            """
+            pass
+
+        def on_step_end(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
+            """
+            Event called at the end of a training step. If using gradient accumulation, one training step might take
+            several inputs.
+            """
+            pass
+
+        def on_evaluate(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
+            """
+            Event called after an evaluation phase.
+            """
+            pass
+
+        def on_save(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
+            """
+            Event called after a checkpoint save.
+            """
+            pass
+
+
+        def on_prediction_step(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
+            """
+            Event called after a prediction step.
+            """
+            pass
+
+    # class MyCallback(TrainerCallback):
+    #     """
+    #     A :class:`~transformers.TrainerCallback` that handles the default flow of the training loop for logs, evaluation
+    #     and checkpoints.
+    #     """
+    #
+    #     def on_step_end(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
+    #         gc.collect()
+    #         torch.cuda.empty_cache()
+
+    # TODO: add .to("cpu") and eval
+    # class SaveModelCallback(TrainerCallback):
+    #     def __init__(self, save_path, model_id):
+    #         super().__init__()
+    #         self.save_path = save_path + '/' + 'models/' + 'model_' + str(model_id)
+    #
+    #         if not os.path.exists(self.save_path):
+    #             os.mkdir(self.save_path)
+    #
+    #     def on_epoch_end(self, args: TrainingArguments, state: TrainerState, control: TrainerControl,
+    #                      model: PreTrainedModel, **kwargs):
+    #         epoch = int(state.epoch)
+    #         save_directory = self.save_path + '/' + 'epoch_' + str(epoch)
+    #
+    #         if not os.path.exists(save_directory):
+    #             os.mkdir(save_directory)
+    #
+    #         print('######################')
+    #         print('MODEL TYPE')
+    #         print(type(model))
+    #         print('######################')
+    #         model.save_pretrained(save_directory=save_directory)
+
     model_checkpoint = "bert-base-uncased"
     batch_size = 16
     label_list = labels
@@ -184,8 +280,8 @@ def main_train(args):
         f"test",
         evaluation_strategy="epoch",
         learning_rate=2e-5,
-        per_device_train_batch_size=batch_size,
-        per_device_eval_batch_size=batch_size,
+        per_device_train_batch_size=1,#batch_size,
+        per_device_eval_batch_size=1,#batch_size,
         num_train_epochs=3,
         weight_decay=0.01,
         # logging_dir="logs"
