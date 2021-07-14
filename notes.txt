@@ -25,3 +25,7 @@ F1 , AUCROC при разных слоях (при разных H size)
 добавить inference speed
 
 для лучшей модели P@class, R@class, per classes
+
+valid before train
+add samples per second
+rewrite to hf trainer
