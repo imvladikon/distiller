@@ -5,7 +5,6 @@ from catalyst.core import Callback
 
 from compressors.distillation.callbacks.order import CallbackOrder
 from compressors.distillation.losses import KLDivLoss
-from compressors.distillation.schedulers.temperature_schedulers import ConstantTemperatureScheduler
 
 
 class KLDivCallback(Callback):

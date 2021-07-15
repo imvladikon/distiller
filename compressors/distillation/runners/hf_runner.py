@@ -12,15 +12,24 @@ class HFDistilRunner(Runner):
         if self.is_train_loader:
             teacher.eval()
             set_requires_grad(teacher, False)
-            t_outputs = teacher(**batch, output_hidden_states=True, return_dict=True)
+            t_outputs = teacher(**batch,
+                                output_hidden_states=True,
+                                output_attentions=True,
+                                return_dict=True)
 
-        s_outputs = student(**batch, output_hidden_states=True, return_dict=True)
+        s_outputs = student(**batch,
+                            output_hidden_states=True,
+                            output_attentions=True,
+                            return_dict=True)
+
         if self.is_train_loader:
             self.batch["t_logits"] = t_outputs["logits"]
             self.batch["t_hidden_states"] = t_outputs["hidden_states"]
+            self.batch["t_attentions"] = t_outputs["attentions"]
         self.batch_metrics["task_loss"] = s_outputs["loss"]
         self.batch["s_logits"] = s_outputs["logits"]
         self.batch["s_hidden_states"] = s_outputs["hidden_states"]
+        self.batch["s_attentions"] = s_outputs["attentions"]
 
 
 __all__ = ["HFDistilRunner"]

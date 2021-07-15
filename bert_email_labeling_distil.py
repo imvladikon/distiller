@@ -8,6 +8,7 @@ from catalyst.loggers import WandbLogger
 from datasets import load_metric
 from transformers import AutoTokenizer
 
+from compressors.distillation.callbacks.attention_emd_callback import AttentionEmdCallback
 from compressors.distillation.schedulers.temperature_schedulers import FlswTemperatureScheduler
 from config.google_students_models import get_student_models, all_google_students
 from modeling.bert_multilabel_classification import BertForMultiLabelSequenceClassification
@@ -181,11 +182,15 @@ def main(args):
             os.environ["WANDB_API_KEY"] = args.wandb_token
             del args["wandb_token"]
 
+    att_callback = AttentionEmdCallback.create_from_configs(teacher_config=teacher_model.config,
+                                             student_config=student_model.config,
+                                             device=device)
     callbacks = [
         # metric_callback,
         lambda_hiddens_callback,
         mse_hiddens,
         kl_div,
+        att_callback,
         aggregator,
         OptimizerCallback(metric_key="loss"),
     ]
