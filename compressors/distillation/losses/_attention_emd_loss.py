@@ -44,14 +44,19 @@ class AttentionEmdLoss(nn.Module):
         self.device = device
         self.loss_mse_fn = nn.MSELoss()
 
-    def get_new_layer_weight(self, trans_matrix, distance_matrix, stu_layer_num, tea_layer_num, T, weights,
+    def get_new_layer_weight(self,
+                             trans_matrix,
+                             distance_matrix,
+                             stu_layer_num,
+                             tea_layer_num,
+                             T,
                              type_update='att'):
         if type_update == 'att':
             student_layer_weight = np.copy(self.att_student_weight)
-            teacher_layer_weight = np.copy(self.self.att_teacher_weight)
+            teacher_layer_weight = np.copy(self.att_teacher_weight)
         else:
-            student_layer_weight = np.copy(self.self.rep_student_weight)
-            teacher_layer_weight = np.copy(self.self.rep_teacher_weight)
+            student_layer_weight = np.copy(self.rep_student_weight)
+            teacher_layer_weight = np.copy(self.rep_teacher_weight)
 
         distance_matrix = distance_matrix.detach().cpu().numpy().astype('float64')
         trans_weight = np.sum(trans_matrix * distance_matrix, -1)
@@ -77,10 +82,10 @@ class AttentionEmdLoss(nn.Module):
 
         if type_update == 'att':
             self.att_student_weight = student_layer_weight
-            self.self.att_teacher_weight = teacher_layer_weight
+            self.att_teacher_weight = teacher_layer_weight
         else:
-            self.self.rep_student_weight = student_layer_weight
-            self.self.rep_teacher_weight = teacher_layer_weight
+            self.rep_student_weight = student_layer_weight
+            self.rep_teacher_weight = teacher_layer_weight
 
     def transformer_loss(self,
                          student_atts,
@@ -145,7 +150,7 @@ class AttentionEmdLoss(nn.Module):
                     teacher_att = torch.where(teacher_att <= -1e2, torch.zeros_like(teacher_att).to(device),
                                               teacher_att)
 
-                    #TODO: fix a bug, when different count of the attention heads
+                    # TODO: fix a bug, when different count of the attention heads
                     tmp_loss = self.loss_mse_fn(student_att, teacher_att)
                     distance_matrix[i][j + stu_layer_num] = distance_matrix[j + stu_layer_num][i] = tmp_loss
             _, trans_matrix = emd_with_flow(student_layer_weight, teacher_layer_weight,
@@ -160,11 +165,11 @@ class AttentionEmdLoss(nn.Module):
                 emd_att_loss(student_atts, teacher_atts, self.att_student_weight, self.att_teacher_weight,
                              stu_layer_num, tea_layer_num, device)
             if self.args.update_weight:
-                self.get_new_layer_weight(att_trans_matrix, att_distance_matrix, stu_layer_num, tea_layer_num, T=T)
+                self.get_new_layer_weight(att_trans_matrix, att_distance_matrix, stu_layer_num, tea_layer_num, T=self.T)
             att_loss = att_loss.to(device)
         else:
             att_loss = torch.tensor(0)
-        if self.use_rep:
+        if self.args.use_rep:
             if self.args.embedding_emd:
                 rep_loss, rep_trans_matrix, rep_distance_matrix = \
                     embedding_rep_loss(student_reps, teacher_reps, self.rep_student_weight, self.rep_teacher_weight,
@@ -206,7 +211,7 @@ class AttentionEmdLoss(nn.Module):
             #     logger.info('self.rep_teacher_weight:{}'.format(self.rep_teacher_weight))
         if self.args.add_softmax:
             self.att_student_weight = softmax(self.att_student_weight)
-            self.self.att_teacher_weight = softmax(self.att_teacher_weight)
+            self.att_teacher_weight = softmax(self.att_teacher_weight)
 
             self.rep_student_weight = softmax(self.rep_student_weight)
             self.rep_teacher_weight = softmax(self.rep_teacher_weight)

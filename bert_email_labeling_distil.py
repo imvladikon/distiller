@@ -190,7 +190,7 @@ def main(args):
         lambda_hiddens_callback,
         mse_hiddens,
         kl_div,
-        # att_callback,
+        att_callback,
         aggregator,
         OptimizerCallback(metric_key="loss"),
     ]
