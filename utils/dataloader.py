@@ -12,7 +12,7 @@ from datasets import Dataset
 from datasets import DatasetDict
 from torch.utils.data import DataLoader
 
-from const import labels
+from const import labels, label2id
 
 logger = logging.getLogger(__name__)
 
@@ -181,11 +181,12 @@ def _create_examples(df):
     logger.info(f'Labels {c}\n')
     logger.info(f'Processing {gdf.shape[0]} entries')
 
-    res = gdf.apply(
-        lambda x: InputExample(document_id=str(x['document_id']),
-                               text_a=x['document_text'],
-                               labels=list(x['label_text'])),
-        axis=1).tolist()
+    # res = gdf.apply(
+    #     lambda x: InputExample(document_id=str(x['document_id']),
+    #                            text_a=x['document_text'],
+    #                            labels=list(x['label_text'])),
+    #     axis=1).tolist()
+    res = gdf
     return res
 
 
@@ -207,7 +208,7 @@ def convert_examples_to_features(examples,
             if len(example.text_a) > 50000:
                 logger.warning(f'Skipping email that is longer than 50k characters')
                 raise
-            tokens_a = tokenizer.tokenize(example.text_a)
+            tokens_a = tokenizer.tokenize(example.text_a, t)
         except:
             logger.warning(f'Failed to tokenize email_id= {example.document_id}')
             tokens_a = [tokenizer.unk_token]
@@ -290,89 +291,69 @@ def convert_examples_to_features(examples,
     return features
 
 
+def processing_data(df, size, text_column, label_column, transform_label_fn):
+    df = df[~df[text_column].isna()]
+    if size > 0:
+        df = df.sample(size)
+    logger.info(f'Read {df.shape[0]} entries')
+
+    df[text_column] = df[text_column].str.lower().str.replace('(https?|ftp|file|zoom|aws|mailto)\:\S+', ' ')
+    # if 'subject' in df.columns:
+    #     df['document_text'] = df['subject'] + ' ' + df['document_text']        # if 'subject' in df.columns:
+    #     df['document_text'] = df['subject'] + ' ' + df['document_text']
+    if not pd.api.types.is_list_like(df[label_column].iloc[0]):
+        df[label_column] = df[label_column].str.lower().apply(ast.literal_eval).apply(list)
+    df[label_column] = df[label_column].map(transform_label_fn)
+
+    df = df.groupby('document_id').agg({label_column: sum, text_column: 'first', }).reset_index()
+    df[label_column] = df[label_column].apply(list)
+    c = Counter()
+    _ = [c.update(el) for el in df[label_column] for x in el]
+    logger.info(f'Labels {c}\n')
+    logger.info(f'Processing {df.shape[0]} entries')
+    return df
+
+
 def load_dataset(
         train_filename: str,
         val_filename: str = None,
         max_seq_length: int = 512,
         tokenizer: transformers.AutoTokenizer = None,
-        train_format_with_proba: bool = False,
-        text_column: str = "",
-        label_column: str = "",
+        train_format_with_proba: bool = True,
+        text_column: str = 'document_text',
+        label_column: str = "label_text",
         train_size: int = -1,
         val_size: int = -1,
         columns: Optional[List] = None,
         threshold: float = 0.5
 ) -> DatasetDict:
-    # TODO : add column names (text_column , label_column)
     # TODO : add calculating max_seq_length from dataset if it's None
 
-    # train_df = pd.read_csv("data/0/train.csv").reset_index(drop=True)
-    # test_df = pd.read_csv("data/0/test.csv").reset_index(drop=True)
-    # train_df["label_text"] = train_df.label_text.map(literal_eval)
-    # test_df["label_text"] = test_df.label_text.map(literal_eval)
 
-    if columns is None:
-        columns = ["input_ids", "token_type_ids", "attention_mask", "labels"]
-
-    processor = BinaryLabelTextProcessor(labels)
-    label_list = processor.get_labels()
-
+    label_list = labels
     logger.info("LOOKING AT {}".format(train_filename))
+    train_df = pd.read_csv(train_filename).reset_index(drop=True)
+    transform_label_fn = lambda l: [int(k in l) for k in label2id]
     if train_format_with_proba:
-        data_df = pd.read_csv(train_filename).reset_index(drop=True)
-        lbls = ['proba_' + el.lower() for el in label_list]
-        train_examples = data_df.apply(
-            lambda x: InputExample(guid=hash(x['document_id']),
-                                   text_a=x['document_text'],
-                                   labels=x[lbls].tolist()),
-            axis=1).tolist()
-    else:
-        data_df = pd.read_csv(train_filename, dtype=str)
-        if train_size == -1:
-            train_examples = _create_examples(data_df)
-        else:
-            train_examples = _create_examples(data_df.sample(train_size))
+        train_df[label_column] = list(train_df[[f"proba_{l}" for l in label_list]].values)
+        transform_label_fn = lambda l: [int(proba > threshold) for proba in l]
 
-    if not train_format_with_proba:
-        train_features = convert_examples_to_features(train_examples, label_list, max_seq_length, tokenizer)
-    else:
-        logger.info("proba threshold {}".format(threshold))
-        train_features = convert_examples_to_features(train_examples,
-                                                      label_list,
-                                                      max_seq_length,
-                                                      tokenizer,
-                                                      is_multilabel=False,
-                                                      is_multilabel_with_proba=True,
-                                                      threshold=threshold)
+    train_df = processing_data(train_df,
+                              train_size,
+                              text_column,
+                              label_column,
+                              transform_label_fn=transform_label_fn)
 
-    def to_dict(record):
-        return {
-            "input_ids": record.input_ids,
-            "token_type_ids": record.segment_ids,
-            "attention_mask": record.input_mask,
-            "labels": record.label_ids,
-            # "guid": record.guid
-        }
-        # return {a: getattr(record, a) for a in ["input_ids", "input_mask", "label_ids", "segment_ids"]}
+    train_ds = Dataset.from_pandas(train_df[[text_column, label_column]])
 
-    train_df = pd.DataFrame([to_dict(record) for record in train_features])
-
+    columns = ["input_ids", "token_type_ids", "attention_mask", "labels"]
     if val_filename and os.path.exists(val_filename):
-        logger.info(f"Reading {val_filename}")
-        val_df = pd.read_csv(val_filename, dtype=str)
-        if val_size == -1:
-            eval_examples = _create_examples(val_df)
-        else:
-            eval_examples = _create_examples(val_df.sample(val_size))
-
-        eval_features = convert_examples_to_features(
-            eval_examples,
-            label_list,
-            max_seq_length,
-            tokenizer,
-            cut_long=True)
-
-        val_df = pd.DataFrame([to_dict(record) for record in eval_features])
+        val_df = pd.read_csv(val_filename).reset_index(drop=True)
+        val_df = processing_data(val_df,
+                                  val_size,
+                                  text_column,
+                                  label_column,
+                                  transform_label_fn=lambda l: [int(k in l) for k in label2id])
 
         datasets = DatasetDict(
             dict(
@@ -388,16 +369,21 @@ def load_dataset(
             )
         )
 
-    # datasets = datasets.map(
-    #     lambda e: tokenizer(e["text"], truncation=True, padding="max_length", max_length=128),
-    #     batched=True,
-    # )
-    # datasets = datasets.map(lambda e: {"labels": e["label"]}, batched=True)
+    if label_column!="labels":
+        datasets = datasets.rename_column(label_column, "labels")
 
-    datasets.set_format(
-        type="torch", columns=columns
+    cols = datasets["train"].column_names
+    cols.remove("labels")
+
+    datasets = datasets.map(
+        lambda e: tokenizer(e[text_column], truncation=True), #, padding="max_length", max_length=max_seq_length
+        batched=True,
+        remove_columns=cols
     )
 
+    datasets.set_format(
+        type="torch", columns=["input_ids", "token_type_ids", "attention_mask", "labels"]
+    )
     return datasets
 
 

@@ -6,8 +6,10 @@ from catalyst.callbacks import ControlFlowCallback, OptimizerCallback
 from catalyst.callbacks.metric import LoaderMetricCallback
 from catalyst.loggers import WandbLogger
 from datasets import load_metric
-from transformers import AutoTokenizer, Trainer, TrainingArguments, DefaultFlowCallback
+from transformers import AutoTokenizer, Trainer, TrainingArguments, DefaultFlowCallback, DataCollatorWithPadding
 from transformers.integrations import WandbCallback
+
+from compressors.runners.distill_trainer import DistllTrainer
 from config.google_students_models import get_student_models, all_google_students
 from modeling.bert_multilabel_classification import BertForMultiLabelSequenceClassification
 
@@ -64,6 +66,8 @@ def main(args):
                                                                             num_labels=len(label_list))
     teacher_model.to(device)
 
+
+
     ds = load_dataset(
         train_filename=args.train_filename,
         val_filename=args.val_filename,
@@ -71,9 +75,11 @@ def main(args):
         max_seq_length=512,
         train_format_with_proba=args.train_format_with_proba,
         train_size=args.train_size,
-        val_size=args.val_size
+        val_size=args.val_size,
+        text_column = 'document_text',
+        label_column = "label_text"
     )
-    if args.aug_train:
+    if False and args.aug_train:
         import glob
         import os
         from datasets import concatenate_datasets
@@ -89,7 +95,7 @@ def main(args):
             )
             ds["train"] = concatenate_datasets([ds["train"], new_ds["train"]])
 
-    loaders = datasets_as_loaders(ds, batch_size=args.train_batch_size, val_batch_size=args.val_batch_size)
+
 
     student_model = BertForMultiLabelSequenceClassification.from_pretrained(
         args.student_model_name, num_labels=len(label_list)
@@ -165,7 +171,7 @@ def main(args):
         mse_hiddens,
         kl_div,
         aggregator,
-        OptimizerCallback(metric_key="loss"),
+        # OptimizerCallback(metric_key="loss"),
     ]
     if num_student_layers < num_teacher_layers and num_student_layers in map_layers:
         callbacks = [
@@ -173,10 +179,10 @@ def main(args):
             slct_callback,
             *callbacks
         ]
-    callbacks = [
-        metric_callback,
-        *callbacks
-    ]
+    # callbacks = [
+    #     metric_callback,
+    #     *callbacks
+    # ]
 
     if args.use_wandb:
         import os
@@ -216,35 +222,48 @@ def main(args):
         # wandb.watch(student_model)
 
     # callbacks = [WandbLogger(project="catalyst", name='Example'), logging_params = {params}]
+    import os
+    os.environ["WANDB_API_KEY"] = "028b28de5b2e1acd20824041eaf39c98d5ca1eab"
+
+    # loaders = datasets_as_loaders(ds, batch_size=args.train_batch_size, val_batch_size=args.val_batch_size)
 
     training_args = TrainingArguments(
         f"test",
         evaluation_strategy="epoch",
         learning_rate=2e-5,
-        per_device_train_batch_size=args.batch_size,
-        per_device_eval_batch_size=args.batch_size,
+        per_device_train_batch_size=args.train_batch_size,
+        per_device_eval_batch_size=args.val_batch_size,
         num_train_epochs=3,
         weight_decay=0.01,
+        report_to=None,
+        remove_unused_columns=False
 
         # logging_dir="logs"
     )
 
-    runner = Trainer(
-        torch.nn.ModuleDict({"teacher": teacher_model, "student": student_model}),
-        training_args,
-        # train_dataset=ds["train"],
-        # eval_dataset=ds["test"],
-        loaders=loaders,
-        optimizers=torch.optim.Adam(student_model.parameters(), lr=args.learning_rate),
+    # data_collator = DataCollatorWithPadding(tokenizer)
+
+    # os.environ["WANDB_DISABLED"] = "true"
+
+    runner = DistllTrainer(
+        model=student_model,
+        teacher_model=teacher_model,
+        # torch.nn.ModuleDict({"teacher": teacher_model, "student": student_model}),
+        args=training_args,
+        train_dataset=ds["train"],
+        eval_dataset=ds["test"],
+        # optimizers=(torch.optim.Adam(student_model.parameters(), lr=args.learning_rate), None),
         # data_collator=data_collator,
         tokenizer=tokenizer,
-        # compute_metrics=compute_metrics,
+        compute_metrics=metric.compute,
         callbacks=callbacks,
 
     )
-    runner.evaluate()
+    # runner.evaluate()
     runner.train()
     runner.evaluate()
+
+
 
     # if args.use_wandb:
     #     runner.train(

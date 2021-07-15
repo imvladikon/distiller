@@ -16,14 +16,14 @@ class MSEHiddenStatesCallback(TrainerCallback):
     """
 
     def __init__(
-        self,
-        output_key: str = "mse_loss",
-        normalize: bool = False,
-        need_mapping: bool = False,
-        teacher_hidden_state_dim: int = None,
-        student_hidden_state_dim: int = None,
-        num_layers: int = None,
-        device = None
+            self,
+            output_key: str = "mse_loss",
+            normalize: bool = False,
+            need_mapping: bool = False,
+            teacher_hidden_state_dim: int = None,
+            student_hidden_state_dim: int = None,
+            num_layers: int = None,
+            device=None
     ):
         """
         MSE loss aka Hint loss for difference between hidden
@@ -44,16 +44,16 @@ class MSEHiddenStatesCallback(TrainerCallback):
         if device is not None:
             self.criterion.to(device)
 
-    def on_step_end(self,
-                    args: TrainingArguments,
-                    state: TrainerState,
-                    control: TrainerControl,
-                    metrics: Dict[str, float] = None,
-                    **kwargs):
-
-        metrics[self.output_key] = self.criterion(
-            s_hidden_states=metrics["s_hidden_states"],
-            t_hidden_states=metrics["t_hidden_states"],
+    def on_compute_loss_begin(self,
+                              args: TrainingArguments,
+                              state: TrainerState,
+                              control: TrainerControl,
+                              batch: Dict[str, float] = None,
+                              **kwargs):
+        batch[self.output_key] = self.criterion(
+            s_hidden_states=batch["s_hidden_states"],
+            t_hidden_states=batch["t_hidden_states"],
         )
+
 
 __all__ = ["MSEHiddenStatesCallback"]

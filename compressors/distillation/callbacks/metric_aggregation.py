@@ -1,7 +1,7 @@
 from typing import Any, Callable, Dict, List, Union
 
 import torch
-from transformers import Trainer
+from transformers import Trainer, TrainerCallback, TrainingArguments, TrainerState, TrainerControl
 
 
 def _sum_aggregation(x):
@@ -12,7 +12,7 @@ def _mean_aggregation(x):
     return torch.mean(torch.stack(x))
 
 
-class MetricAggregationCallback(Trainer):
+class MetricAggregationCallback(TrainerCallback):
     """A callback to aggregate several metrics in one value.
 
     Args:
@@ -105,7 +105,7 @@ class MetricAggregationCallback(Trainer):
         multiplier: float = 1.0,
     ) -> None:
         """Init."""
-        super().__init__(order=CallbackOrder.metric_aggregation, node=CallbackNode.all)
+        # super().__init__(order=CallbackOrder.metric_aggregation, node=CallbackNode.all)
 
         if prefix is None or not isinstance(prefix, str):
             raise ValueError("prefix must be str")
@@ -168,13 +168,23 @@ class MetricAggregationCallback(Trainer):
             metric_aggregated = self.aggregation_fn(metrics_processed) * self.multiplier
         metrics[self.prefix] = metric_aggregated
 
-    def on_batch_end(self, runner: "IRunner") -> None:
+    # def on_batch_end(self, runner: "IRunner") -> None:
+    #     """Computes the metric and add it to the batch metrics.
+    #
+    #     Args:
+    #         runner: current runner
+    #     """
+    #     self._process_metrics(runner.batch_metrics, runner)
+
+    def on_step_end(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
         """Computes the metric and add it to the batch metrics.
 
         Args:
             runner: current runner
         """
-        self._process_metrics(runner.batch_metrics, runner)
+        # state.log_history
+        pass
+        # self._process_metrics(runner.batch_metrics, runner)
 
 
 __all__ = [

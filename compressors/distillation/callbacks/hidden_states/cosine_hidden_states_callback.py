@@ -41,22 +41,22 @@ class CosineHiddenStatesCallback(TrainerCallback):
             student_hidden_state_dim=student_hidden_state_dim,
         )
 
-    def on_step_end(self,
+    def on_compute_loss_begin(self,
                     args: TrainingArguments,
                     state: TrainerState,
                     control: TrainerControl,
-                    metrics: Dict[str, float] = None,
+                    batch: Dict[str, float] = None,
                     **kwargs):
         """
         Event called at the end of a training step. If using gradient accumulation, one training step might take
         several inputs.
         """
-        s_hiddens = metrics["s_hidden_states"]
-        t_hiddens = metrics["t_hidden_states"]
+        s_hiddens = batch["s_hidden_states"]
+        t_hiddens = batch["t_hidden_states"]
         if self.last_only:
             s_hiddens = s_hiddens[-1]
             t_hiddens = t_hiddens[-1]
-        metrics[self.output_key] = self.criterion(s_hiddens, t_hiddens)
+        batch[self.output_key] = self.criterion(s_hiddens, t_hiddens)
 
 
 __all__ = ["CosineHiddenStatesCallback"]
