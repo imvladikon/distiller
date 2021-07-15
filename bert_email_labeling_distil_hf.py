@@ -1,13 +1,16 @@
 import argparse
 from pathlib import Path
+from typing import Callable, Dict
 
 import matplotlib
 from catalyst.callbacks.metric import LoaderMetricCallback
 from datasets import load_metric
-from transformers import AutoTokenizer, TrainingArguments
+from transformers import AutoTokenizer, TrainingArguments, EvalPrediction
 
 from distillation.callbacks.integrations.wandb import WandbCallbackCustomized
 from transformers import integrations
+
+from metrics.multiclasseval import Multiclasseval
 from runners.distill_trainer import DistllTrainer
 from config.google_students_models import get_student_models, all_google_students
 from modeling.bert_multilabel_classification import BertForMultiLabelSequenceClassification
@@ -43,7 +46,23 @@ from distillation.callbacks import (
 )
 
 
+main_metric = None
+
+def compute_metrics(eval_pred: EvalPrediction) -> Callable[[EvalPrediction], Dict]:
+    logits, labels = eval_pred
+    if isinstance(logits, tuple):
+        logits = logits[0] # bert return also hidden repr. fix?
+    labels = torch.LongTensor(labels)
+    predictions = torch.FloatTensor(logits)
+
+    scores = main_metric.compute(predictions=predictions, references=labels)
+
+    return scores
+
+
 def main(args):
+    global main_metric
+
     if 'n_threads' in args:
         torch.set_num_threads(args['n_threads'])
         logger.info(f"Setting #threads to {args['n_threads']}")
@@ -110,10 +129,11 @@ def main(args):
     if num_student_layers < num_teacher_layers and num_student_layers in map_layers:
         slct_callback = HiddenStatesSelectCallback(hiddens_key="t_hidden_states", layers=map_layers[num_student_layers])
 
+    CLS_IDX = 0
     lambda_hiddens_callback = LambdaPreprocessCallback(
         lambda s_hiddens, t_hiddens: (
-            [c_s[:, 0] for c_s in s_hiddens],
-            [t_s[:, 0] for t_s in t_hiddens],  # tooks only CLS token
+            [c_s[:, CLS_IDX] for c_s in s_hiddens],
+            [t_s[:, CLS_IDX] for t_s in t_hiddens],
         )
     )
 
@@ -199,6 +219,11 @@ def main(args):
                                                                                 tags=[t_model_name, s_model_name],
                                                                                 **additional_config)
 
+    metric = Multiclasseval()
+    metric.threshold = args.threshold
+    metric.num_classes = len(label_list)
+    main_metric = metric
+
     training_args = TrainingArguments(
         f"test",
         evaluation_strategy="epoch",
@@ -220,14 +245,13 @@ def main(args):
     runner = DistllTrainer(
         model=student_model,
         teacher_model=teacher_model,
-        # torch.nn.ModuleDict({"teacher": teacher_model, "student": student_model}),
         args=training_args,
         train_dataset=ds["train"],
         eval_dataset=ds["test"],
         # optimizers=(torch.optim.Adam(student_model.parameters(), lr=args.learning_rate), None),
         # data_collator=data_collator,
         tokenizer=tokenizer,
-        compute_metrics=metric.compute,
+        compute_metrics=compute_metrics,
         callbacks=callbacks,
     )
     # runner.evaluate()
@@ -291,8 +315,8 @@ if __name__ == "__main__":
     parser.add_argument("--val_filename", default=str(ROOT_DIR / "data" / "0" / "test.csv"), type=str, required=False)
     parser.add_argument("--one_cycle_train", default=True, type=bool, required=False)
     parser.add_argument("--train_format_with_proba", default=False, type=bool, required=False)
-    parser.add_argument("--train_size", default=-1, type=int, required=False)
-    parser.add_argument("--val_size", default=-1, type=int, required=False)
+    parser.add_argument("--train_size", default=5, type=int, required=False)
+    parser.add_argument("--val_size", default=5, type=int, required=False)
     parser.add_argument("--data_dir", default=str(ROOT_DIR / 'data'), type=str, required=False)
     parser.add_argument("--task_name", default='email_reject', type=str, required=False)
     parser.add_argument("--bert_tokenizer", default="bert-base-uncased", type=str, required=False)

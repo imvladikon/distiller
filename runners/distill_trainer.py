@@ -68,6 +68,12 @@ CallbackHandler.on_compute_loss_end = on_compute_loss_end_handler
 
 
 class DistllTrainer(Trainer):
+    """
+    custom trainer for distillation
+    method with
+    model=torch.nn.ModuleDict({"teacher": teacher_model, "student": student_model})
+    doesn't work due to hf trainer infer column names from forward
+    """
 
     def __init__(
             self,
@@ -106,10 +112,10 @@ class DistllTrainer(Trainer):
 
     def compute_loss(self, model, batch, return_outputs=False):
         # batch - Dict['attention_mask', 'input_ids', 'labels', 'token_type_ids']
-
+        # TODO: fix , is_in_train doesn't work
         student = model
         teacher = self.teacher_model
-        if self.is_in_train:
+        if True or self.is_in_train:
             t_outputs = teacher(
                 **batch,
                 output_hidden_states=self.output_hidden_states,
@@ -121,7 +127,7 @@ class DistllTrainer(Trainer):
             return_dict=True,
         )
         batch["s_logits"] = s_outputs["logits"]
-        if self.is_in_train:
+        if True or self.is_in_train:
             batch["t_logits"] = t_outputs["logits"]
             if self.apply_probability_shift:
                 batch["t_logits"] = probability_shift(
@@ -130,16 +136,18 @@ class DistllTrainer(Trainer):
                 )
         if self.output_hidden_states:
             batch["s_hidden_states"] = s_outputs["hidden_states"]
-            if self.is_in_train:
+            if True or self.is_in_train:
                 batch["t_hidden_states"] = t_outputs["hidden_states"]
 
         batch["task_loss"] = s_outputs["loss"]
         self.control = self.callback_handler.on_compute_loss_begin(self.args, self.state, self.control, batch=batch)
-        self.state.batch_metrics.update({
+        losses = {
             "task_loss": batch["task_loss"],
             "kl_div_loss": batch["kl_div_loss"],
             "mse_loss": batch["mse_loss"],
-        })
+        }
+        self.state.batch_metrics.update(losses)
+        self.log({k: v.item() for k, v in losses.items()})
         self.control = self.callback_handler.on_compute_loss_end(self.args, self.state, self.control, batch=batch)
         loss = self.state.batch_metrics.get("loss", batch["task_loss"])
         if not "loss" in self.state.batch_metrics:
@@ -150,6 +158,7 @@ class DistllTrainer(Trainer):
 class ProgressCallback(TrainerCallback):
     """
     A :class:`~transformers.TrainerCallback` that displays the progress of training or evaluation.
+    custom version of hf ProgressCallback - added showing batch_metrics
     """
 
     def __init__(self):
