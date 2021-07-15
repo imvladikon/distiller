@@ -1,4 +1,5 @@
 import collections
+import logging
 from typing import Optional, Callable, Dict, Tuple, List
 
 import transformers.trainer
@@ -58,7 +59,7 @@ def on_compute_loss_end_handler(self,
                                 state: TrainerState,
                                 control: TrainerControl,
                                 **kwargs):
-    return self.call_event("on_compute_loss_begin", args, state, control, **kwargs)
+    return self.call_event("on_compute_loss_end", args, state, control, **kwargs)
 
 
 CallbackHandler.on_compute_loss_begin = on_compute_loss_begin_handler
@@ -134,14 +135,16 @@ class DistllTrainer(Trainer):
 
         batch["task_loss"] = s_outputs["loss"]
         self.control = self.callback_handler.on_compute_loss_begin(self.args, self.state, self.control, batch=batch)
-
-        loss = batch["task_loss"] + batch["kl_div_loss"] + batch["mse_loss"]
         self.state.batch_metrics.update({
             "task_loss": batch["task_loss"],
             "kl_div_loss": batch["kl_div_loss"],
             "mse_loss": batch["mse_loss"],
-            "loss": loss
         })
+        self.control = self.callback_handler.on_compute_loss_end(self.args, self.state, self.control, batch=batch)
+        loss = self.state.batch_metrics.get("loss", batch["task_loss"])
+        if not "loss" in self.state.batch_metrics:
+            # log.WARN()
+            print("incorrect loss, check aggregation callback. only task loss is used")
         return (loss, s_outputs) if return_outputs else loss
 
 

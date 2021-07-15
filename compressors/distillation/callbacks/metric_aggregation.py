@@ -98,11 +98,11 @@ class MetricAggregationCallback(TrainerCallback):
     """
 
     def __init__(
-        self,
-        prefix: str,
-        metrics: Union[str, List[str], Dict[str, float]] = None,
-        mode: Union[str, Callable] = "mean",
-        multiplier: float = 1.0,
+            self,
+            prefix: str,
+            metrics: Union[str, List[str], Dict[str, float]] = None,
+            mode: Union[str, Callable] = "mean",
+            multiplier: float = 1.0,
     ) -> None:
         """Init."""
         # super().__init__(order=CallbackOrder.metric_aggregation, node=CallbackNode.all)
@@ -176,7 +176,12 @@ class MetricAggregationCallback(TrainerCallback):
     #     """
     #     self._process_metrics(runner.batch_metrics, runner)
 
-    def on_step_end(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
+    def on_compute_loss_end(self,
+                            args: TrainingArguments,
+                            state: TrainerState,
+                            control: TrainerControl,
+                            batch,
+                            **kwargs):
         """Computes the metric and add it to the batch metrics.
 
         Args:
