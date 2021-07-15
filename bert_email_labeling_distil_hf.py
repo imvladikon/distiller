@@ -1,4 +1,5 @@
 import argparse
+from pathlib import Path
 
 import matplotlib
 from catalyst.callbacks.metric import LoaderMetricCallback
@@ -169,11 +170,15 @@ def main(args):
             *callbacks
         ]
 
+    s_model_name = args.student_model_name
     if args.use_wandb:
         import os
         if args.wandb_token:
             os.environ["WANDB_API_KEY"] = args.wandb_token
             del args["wandb_token"]
+
+        os.environ["WANDB_WATCH"] = "true"
+        os.environ["WANDB_LOG_MODEL"] = "true"
 
         t_model_name = os.path.basename(teacher_model_name) if os.path.isabs(teacher_model_name) else teacher_model_name
         student_model_name = args.student_model_name
@@ -193,22 +198,6 @@ def main(args):
                                                                                 notes=args.wandb_note,
                                                                                 tags=[t_model_name, s_model_name],
                                                                                 **additional_config)
-        # wandb_logger = WandbLogger(project="distill_bert",
-        #                            name=f"distill_t_{t_model_name}_s_{s_model_name}")
-        #                            #note=args.wandb_note)
-        #
-        # output_model_dir = Path(args.output_model_dir) / s_model_name
-        # output_model_dir.mkdir(parents=True, exist_ok=True)
-        #
-        # def close_log(self) -> None:
-        #     """Closes the logger."""
-        #     student_model.save_pretrained(str(output_model_dir))
-        #     wandb.save(f"{str(output_model_dir)}/*")
-        #     self.run.finish()
-        #
-        # WandbLogger.close_log = close_log
-        #
-        # wandb.watch(student_model)
 
     training_args = TrainingArguments(
         f"test",
@@ -219,7 +208,8 @@ def main(args):
         num_train_epochs=3,
         weight_decay=0.01,
         report_to=args.report_to,
-        remove_unused_columns=False
+        remove_unused_columns=False,
+        load_best_model_at_end=True,
         # logging_dir="logs"
     )
 
@@ -270,7 +260,8 @@ def main(args):
     #         verbose=True
     #     )
 
-    output_model_dir = None
+    output_model_dir = Path(args.output_model_dir) / s_model_name
+    output_model_dir.mkdir(parents=True, exist_ok=True)
     student_model.save_pretrained(output_model_dir)
 
 
