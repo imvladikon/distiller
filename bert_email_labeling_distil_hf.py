@@ -5,6 +5,8 @@ from catalyst.callbacks.metric import LoaderMetricCallback
 from datasets import load_metric
 from transformers import AutoTokenizer, TrainingArguments
 
+from distillation.callbacks.integrations.wandb import WandbCallbackCustomized
+from transformers import integrations
 from runners.distill_trainer import DistllTrainer
 from config.google_students_models import get_student_models, all_google_students
 from modeling.bert_multilabel_classification import BertForMultiLabelSequenceClassification
@@ -57,8 +59,6 @@ def main(args):
                                                                             num_labels=len(label_list))
     teacher_model.to(device)
 
-
-
     ds = load_dataset(
         train_filename=args.train_filename,
         val_filename=args.val_filename,
@@ -67,8 +67,8 @@ def main(args):
         train_format_with_proba=args.train_format_with_proba,
         train_size=args.train_size,
         val_size=args.val_size,
-        text_column = 'document_text',
-        label_column = "label_text"
+        text_column='document_text',
+        label_column="label_text"
     )
     if False and args.aug_train:
         import glob
@@ -85,8 +85,6 @@ def main(args):
                 threshold=args.threshold
             )
             ds["train"] = concatenate_datasets([ds["train"], new_ds["train"]])
-
-
 
     student_model = BertForMultiLabelSequenceClassification.from_pretrained(
         args.student_model_name, num_labels=len(label_list)
@@ -170,22 +168,31 @@ def main(args):
             slct_callback,
             *callbacks
         ]
-    # callbacks = [
-    #     metric_callback,
-    #     *callbacks
-    # ]
 
     if args.use_wandb:
         import os
         if args.wandb_token:
             os.environ["WANDB_API_KEY"] = args.wandb_token
             del args["wandb_token"]
-        # WandbCallback
 
-        # t_model_name = os.path.basename(teacher_model_name) if os.path.isabs(teacher_model_name) else teacher_model_name
-        # student_model_name = args.student_model_name
-        # s_model_name = os.path.basename(student_model_name) if os.path.isabs(student_model_name) else student_model_name
-        # s_model_name = f"{s_model_name}_T-{args.temperature}"
+        t_model_name = os.path.basename(teacher_model_name) if os.path.isabs(teacher_model_name) else teacher_model_name
+        student_model_name = args.student_model_name
+        s_model_name = os.path.basename(student_model_name) if os.path.isabs(student_model_name) else student_model_name
+        s_model_name = f"{s_model_name}_T-{args.temperature}"
+
+        additional_config = {
+            **dict(args),
+            "student_hidden_size": student_model.config.hidden_size,
+            "student_num_hidden_layers": student_model.config.num_hidden_layers,
+            "student_num_attention_heads": student_model.config.num_attention_heads,
+            **loss_weights
+        }
+        integrations.INTEGRATION_TO_CALLBACK["wandb"] = WandbCallbackCustomized(project=args.wandb_project,
+                                                                                entity=args.wandb_entity,
+                                                                                name=f"distill_t_{t_model_name}_s_{s_model_name}",
+                                                                                notes=args.wandb_note,
+                                                                                tags=[t_model_name, s_model_name],
+                                                                                **additional_config)
         # wandb_logger = WandbLogger(project="distill_bert",
         #                            name=f"distill_t_{t_model_name}_s_{s_model_name}")
         #                            #note=args.wandb_note)
@@ -201,22 +208,7 @@ def main(args):
         #
         # WandbLogger.close_log = close_log
         #
-        # run = wandb_logger.run
-        # run.config.update({
-        #     **dict(args),
-        #     "student_hidden_size": student_model.config.hidden_size,
-        #     "student_num_hidden_layers": student_model.config.num_hidden_layers,
-        #     "student_num_attention_heads": student_model.config.num_attention_heads,
-        #     **loss_weights
-        # })
-        # run.tags = [t_model_name, s_model_name]
         # wandb.watch(student_model)
-
-    # callbacks = [WandbLogger(project="catalyst", name='Example'), logging_params = {params}]
-    import os
-    os.environ["WANDB_API_KEY"] = "028b28de5b2e1acd20824041eaf39c98d5ca1eab"
-
-    # loaders = datasets_as_loaders(ds, batch_size=args.train_batch_size, val_batch_size=args.val_batch_size)
 
     training_args = TrainingArguments(
         f"test",
@@ -226,9 +218,8 @@ def main(args):
         per_device_eval_batch_size=args.val_batch_size,
         num_train_epochs=3,
         weight_decay=0.01,
-        report_to=None,
+        report_to=args.report_to,
         remove_unused_columns=False
-
         # logging_dir="logs"
     )
 
@@ -248,13 +239,10 @@ def main(args):
         tokenizer=tokenizer,
         compute_metrics=metric.compute,
         callbacks=callbacks,
-
     )
     # runner.evaluate()
     runner.train()
     runner.evaluate()
-
-
 
     # if args.use_wandb:
     #     runner.train(
@@ -330,11 +318,11 @@ if __name__ == "__main__":
     parser.add_argument("--optimize_on_cpu", default=True, type=bool, required=False)
     parser.add_argument("--loss_scale", default=128, type=int, required=False)
     parser.add_argument("--labels_list", default=labels, type=list, required=False)
-    parser.add_argument("--use_wandb", default=False, type=bool, required=False)
-    parser.add_argument("--wandb_token", default='', type=str, required=False)
+    parser.add_argument("--use_wandb", default=True, type=bool, required=False)
+    parser.add_argument("--wandb_token", default='20fa45ca3deff8ed40145832eb6dc58c1d80cb2d', type=str, required=False)
     parser.add_argument("--wandb_note", default='', type=str, required=False)
-    parser.add_argument("--wandb_project", default='', type=str, required=False)
-    parser.add_argument("--wandb_entity", default='', type=str, required=False)
+    parser.add_argument("--wandb_project", default='gong', type=str, required=False)
+    parser.add_argument("--wandb_entity", default='imvladikon', type=str, required=False)
     parser.add_argument("--wandb_group", default='', type=str, required=False)
     parser.add_argument("--wandb_name", default='', type=str, required=False)
     parser.add_argument("--per_gpu_train_batch_size", default=8, type=int,
@@ -383,6 +371,8 @@ if __name__ == "__main__":
                         required=False)
     parser.add_argument("--output_dir", default=None, type=str, required=False,
                         help="The output directory where the model predictions and checkpoints will be written.")
+    parser.add_argument("--report_to", default="wandb", type=str, required=False,
+                        help="choose place for reporting - [azure_ml, comet_ml, mlflow, tensorboard, wandb, none]")
 
     args = parser.parse_args()
     args = vars(args)
