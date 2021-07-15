@@ -103,7 +103,7 @@ class AttentionEmdLoss(nn.Module):
             for i in range(stu_layer_num):
                 student_rep = student_reps[i]
                 for j in range(tea_layer_num):
-                    teacher_rep = teacher_reps[j]
+                    teacher_rep = teacher_reps[j][:, -student_rep.shape[1]:, :, :]
                     tmp_loss = self.loss_mse_fn(student_rep, teacher_rep)
                     # tmp_loss = torch.nn.functional.normalize(tmp_loss, p=2, dim=2)
                     distance_matrix[i][j + stu_layer_num] = distance_matrix[j + stu_layer_num][i] = tmp_loss
@@ -123,7 +123,7 @@ class AttentionEmdLoss(nn.Module):
             for i in range(stu_layer_num):
                 student_rep = student_reps[i + 1]
                 for j in range(tea_layer_num):
-                    teacher_rep = teacher_reps[j + 1]
+                    teacher_rep = teacher_reps[j + 1][:, -student_rep.shape[1]:, :, :]
                     tmp_loss = self.loss_mse_fn(student_rep, teacher_rep)
                     # tmp_loss = torch.nn.functional.normalize(tmp_loss, p=2, dim=2)
                     distance_matrix[i][j + stu_layer_num] = distance_matrix[j + stu_layer_num][i] = tmp_loss
@@ -144,13 +144,13 @@ class AttentionEmdLoss(nn.Module):
             for i in range(stu_layer_num):
                 student_att = student_atts[i]
                 for j in range(tea_layer_num):
-                    teacher_att = teacher_atts[j]
+                    teacher_att = teacher_atts[j][:, -student_att.shape[1]:, :, :]
                     student_att = torch.where(student_att <= -1e2, torch.zeros_like(student_att).to(device),
                                               student_att)
                     teacher_att = torch.where(teacher_att <= -1e2, torch.zeros_like(teacher_att).to(device),
                                               teacher_att)
 
-                    # TODO: fix a bug, when different count of the attention heads
+                    # TODO: add attention head selection
                     tmp_loss = self.loss_mse_fn(student_att, teacher_att)
                     distance_matrix[i][j + stu_layer_num] = distance_matrix[j + stu_layer_num][i] = tmp_loss
             _, trans_matrix = emd_with_flow(student_layer_weight, teacher_layer_weight,
