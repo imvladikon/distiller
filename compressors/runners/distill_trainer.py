@@ -17,6 +17,8 @@ from compressors.utils import set_requires_grad
 Overriding trainers functionality from hugginface
 """
 
+logger = logging.get_logger(__name__)
+
 TrainerState.batch_metrics = dict()
 
 
@@ -64,7 +66,6 @@ def on_compute_loss_end_handler(self,
 
 CallbackHandler.on_compute_loss_begin = on_compute_loss_begin_handler
 CallbackHandler.on_compute_loss_end = on_compute_loss_end_handler
-
 
 
 class DistllTrainer(Trainer):
@@ -143,8 +144,7 @@ class DistllTrainer(Trainer):
         self.control = self.callback_handler.on_compute_loss_end(self.args, self.state, self.control, batch=batch)
         loss = self.state.batch_metrics.get("loss", batch["task_loss"])
         if not "loss" in self.state.batch_metrics:
-            # log.WARN()
-            print("incorrect loss, check aggregation callback. only task loss is used")
+            logging.warning("incorrect loss, check aggregation callback. only task loss is used")
         return (loss, s_outputs) if return_outputs else loss
 
 
