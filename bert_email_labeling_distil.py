@@ -36,14 +36,14 @@ pd.set_option('display.max_columns', 500)
 pd.set_option('display.width', 300)
 pd.set_option('display.max_colwidth', 100)
 
-from compressors.distillation.callbacks import (
+from distillation import (
     HiddenStatesSelectCallback,
     KLDivCallback,
     LambdaPreprocessCallback,
     MetricAggregationCallback,
     MSEHiddenStatesCallback,
 )
-from compressors.distillation.runners import HFDistilRunner
+from distillation import HFDistilRunner
 from compressors.metrics.hf_metric import HFMetric
 
 

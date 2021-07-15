@@ -1,31 +1,24 @@
 import argparse
-from pathlib import Path
 
 import matplotlib
-from catalyst.callbacks import ControlFlowCallback, OptimizerCallback
 from catalyst.callbacks.metric import LoaderMetricCallback
-from catalyst.loggers import WandbLogger
 from datasets import load_metric
-from transformers import AutoTokenizer, Trainer, TrainingArguments, DefaultFlowCallback, DataCollatorWithPadding
-from transformers.integrations import WandbCallback
+from transformers import AutoTokenizer, TrainingArguments
 
-from compressors.runners.distill_trainer import DistllTrainer
+from runners.distill_trainer import DistllTrainer
 from config.google_students_models import get_student_models, all_google_students
 from modeling.bert_multilabel_classification import BertForMultiLabelSequenceClassification
 
 from const import labels, device, ROOT_DIR
 from utils import set_seed, dotdict
-from utils.dataloader import load_dataset, datasets_as_loaders
+from utils.dataloader import load_dataset
 
 matplotlib.use("agg")
 
 import logging
 import torch
 
-from modeling.gong import bert_seq_classification as bsc
-
 import pandas as pd
-import wandb
 
 logging.basicConfig(format='%(asctime)s\t%(levelname)s\t%(name)s\t%(message)s',
                     datefmt='%Y-%m-%d %H:%M:%S',
@@ -38,15 +31,13 @@ pd.set_option('display.max_columns', 500)
 pd.set_option('display.width', 300)
 pd.set_option('display.max_colwidth', 100)
 
-from compressors.distillation.callbacks import (
+from distillation.callbacks import (
     HiddenStatesSelectCallback,
     KLDivCallback,
     LambdaPreprocessCallback,
     MetricAggregationCallback,
     MSEHiddenStatesCallback,
 )
-from compressors.distillation.runners import HFDistilRunner
-from compressors.metrics.hf_metric import HFMetric
 
 
 def main(args):
@@ -159,11 +150,11 @@ def main(args):
     metric.num_classes = len(label_list)
 
     # regression is setting to True, for avoiding of calculating logits.argmax(-1) in HFMetric
-    metric_callback = LoaderMetricCallback(
-        metric=HFMetric(metric=metric,
-                        regression=True),
-        input_key="s_logits", target_key="labels",
-    )
+    # metric_callback = LoaderMetricCallback(
+    #     metric=HFMetric(metric=metric,
+    #                     regression=True),
+    #     input_key="s_logits", target_key="labels",
+    # )
 
     callbacks = [
         # metric_callback,

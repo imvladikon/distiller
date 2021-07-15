@@ -13,7 +13,7 @@ from transformers import TrainerCallback
 import numpy as np
 import ujson as json
 import pandas as pd
-from compressors.distillation.losses import KLDivLoss, MSEHiddenStatesLoss
+from distillation import KLDivLoss, MSEHiddenStatesLoss
 
 try:
     from torch.utils.tensorboard import SummaryWriter
