@@ -160,9 +160,9 @@ class MetricAggregationCallback(TrainerCallback):
         result = [metric.float() for metric in result]
         return result
 
-    def _process_metrics(self, metrics: Dict, runner: "IRunner") -> None:
+    def _process_metrics(self, metrics: Dict, state: "TrainerState") -> None:
         if callable(self.mode):
-            metric_aggregated = self.aggregation_fn(metrics, runner) * self.multiplier
+            metric_aggregated = self.aggregation_fn(metrics, state) * self.multiplier
         else:
             metrics_processed = self._preprocess(metrics)
             metric_aggregated = self.aggregation_fn(metrics_processed) * self.multiplier
@@ -183,8 +183,7 @@ class MetricAggregationCallback(TrainerCallback):
             runner: current runner
         """
         # state.log_history
-        pass
-        # self._process_metrics(runner.batch_metrics, runner)
+        self._process_metrics(state.batch_metrics, state)
 
 
 __all__ = [

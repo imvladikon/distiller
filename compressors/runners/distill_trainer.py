@@ -1,6 +1,9 @@
+import collections
 from typing import Optional, Callable, Dict, Tuple, List
 
+import transformers.trainer
 import torch
+from tqdm import tqdm
 from transformers import Trainer, TrainingArguments, DataCollator, PreTrainedTokenizerBase, TrainerCallback, \
     TrainerState, TrainerControl
 from torch import nn
@@ -8,6 +11,12 @@ from transformers.trainer_callback import CallbackHandler
 
 from compressors.distillation.data.label_smoothing import probability_shift
 from compressors.utils import set_requires_grad
+
+"""
+Overriding trainers functionality from hugginface
+"""
+
+TrainerState.batch_metrics = dict()
 
 
 def on_compute_loss_begin(self,
@@ -56,7 +65,6 @@ CallbackHandler.on_compute_loss_begin = on_compute_loss_begin_handler
 CallbackHandler.on_compute_loss_end = on_compute_loss_end_handler
 
 
-# self.callback_handler.on_evaluate(self.args, self.state, self.control, output.metrics)
 
 class DistllTrainer(Trainer):
 
@@ -126,26 +134,70 @@ class DistllTrainer(Trainer):
 
         batch["task_loss"] = s_outputs["loss"]
         self.control = self.callback_handler.on_compute_loss_begin(self.args, self.state, self.control, batch=batch)
-        #TODO : update metrics
+
         loss = batch["task_loss"] + batch["kl_div_loss"] + batch["mse_loss"]
-        self.log({
-                  "task_loss":batch["task_loss"].item(),
-                  "kl_div_loss":batch["kl_div_loss"].item(),
-                  "mse_loss":batch["mse_loss"].item(),
-                  "loss":loss.item()
-                  })
+        self.state.batch_metrics.update({
+            "task_loss": batch["task_loss"],
+            "kl_div_loss": batch["kl_div_loss"],
+            "mse_loss": batch["mse_loss"],
+            "loss": loss
+        })
         return (loss, s_outputs) if return_outputs else loss
 
-        ### Multiclass trainer
-        # labels = batch.pop("labels")
-        # outputs = model(**batch, return_dict=True)
-        # logits = outputs.logits
-        #
-        # loss_fct = nn.BCEWithLogitsLoss()
-        # loss = loss_fct(logits.view(-1, self.model.config.num_labels),
-        #                 labels.float().view(-1, self.model.config.num_labels))
-        # return (loss, outputs) if return_outputs else loss
 
-        # outputs = self.model(**batch, return_dict=True)
-        # self.batch_metrics["loss"] = outputs["loss"]
-        # self.batch["logits"] = outputs["logits"]
+class ProgressCallback(TrainerCallback):
+    """
+    A :class:`~transformers.TrainerCallback` that displays the progress of training or evaluation.
+    """
+
+    def __init__(self):
+        self.training_bar: tqdm = None
+        self.prediction_bar: tqdm = None
+        self.current_step = 0
+
+    def on_train_begin(self, args, state, control, **kwargs):
+        if state.is_local_process_zero:
+            loader_key = "train"
+            self.training_bar = tqdm(total=state.max_steps,
+                                     # desc=f"{self.current_step}/{state.max_steps}"
+                                     #      f" * Epoch ({loader_key})"
+                                     )
+        self.current_step = 0
+
+    def on_step_end(self, args, state, control, **kwargs):
+        if state.is_local_process_zero:
+            batch_metrics = {k: float(v) for k, v in state.batch_metrics.items()}
+            self.training_bar.set_postfix(
+                **{
+                    k: "{:3.3f}".format(v) if v > 1e-3 else "{:1.3e}".format(v)
+                    for k, v in sorted(batch_metrics.items())
+                }
+            )
+            self.training_bar.update(state.global_step - self.current_step)
+            self.current_step = state.global_step
+            # self.tqdm.update()
+
+    def on_prediction_step(self, args, state, control, eval_dataloader=None, **kwargs):
+        if state.is_local_process_zero and isinstance(eval_dataloader.dataset, collections.abc.Sized):
+            if self.prediction_bar is None:
+                self.prediction_bar = tqdm(total=len(eval_dataloader), leave=self.training_bar is None)
+            self.prediction_bar.update(1)
+
+    def on_evaluate(self, args, state, control, **kwargs):
+        if state.is_local_process_zero:
+            if self.prediction_bar is not None:
+                self.prediction_bar.close()
+            self.prediction_bar = None
+
+    def on_log(self, args, state, control, logs=None, **kwargs):
+        if state.is_local_process_zero and self.training_bar is not None:
+            _ = logs.pop("total_flos", None)
+            self.training_bar.write(str(logs))
+
+    def on_train_end(self, args, state, control, **kwargs):
+        if state.is_local_process_zero:
+            self.training_bar.close()
+            self.training_bar = None
+
+
+transformers.trainer.DEFAULT_PROGRESS_CALLBACK = ProgressCallback
