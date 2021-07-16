@@ -9,7 +9,7 @@ from datasets import load_metric
 from transformers import AutoTokenizer
 
 from compressors.distillation.callbacks.attention_emd_callback import AttentionEmdCallback
-from compressors.distillation.schedulers.temperature_schedulers import FlswTemperatureScheduler
+from compressors.distillation.schedulers.temperature_schedulers import FlswTemperatureScheduler, CwsmTemperatureScheduler
 from config.google_students_models import get_student_models, all_google_students
 from modeling.bert_multilabel_classification import BertForMultiLabelSequenceClassification
 
@@ -138,14 +138,15 @@ def main(args):
         device=device
     ), loaders="train")
 
-    scheduler = FlswTemperatureScheduler(beta=0.5, gamma=0.5)
-    kl_div = ControlFlowCallback(KLDivCallback(temperature=args.temperature, scheduler=scheduler),
+    scheduler = CwsmTemperatureScheduler(beta=0.5)
+    kl_div = ControlFlowCallback(KLDivCallback(temperature=args.temperature, scheduler=None),
                                  loaders="train")
 
     loss_weights = {
         "kl_div_loss": args.kl_div_loss_weight,
         "mse_loss": args.mse_loss_weight,
-        "task_loss": args.task_loss_weight
+        "task_loss": args.task_loss_weight,
+        "emd_loss": args.emd_loss_weight
     }
     aggregator = ControlFlowCallback(
         MetricAggregationCallback(
@@ -190,7 +191,7 @@ def main(args):
         lambda_hiddens_callback,
         mse_hiddens,
         kl_div,
-        # att_callback,
+        att_callback,
         aggregator,
         OptimizerCallback(metric_key="loss"),
     ]
@@ -356,8 +357,9 @@ if __name__ == "__main__":
                         help="For distributed training: local_rank")
     parser.add_argument("--temperature", default=1, type=float, required=False)
     parser.add_argument("--kl_div_loss_weight", default=0.2, type=float, required=False)
-    parser.add_argument("--mse_loss_weight", default=0.3, type=float, required=False)
+    parser.add_argument("--mse_loss_weight", default=0.1, type=float, required=False)
     parser.add_argument("--task_loss_weight", default=0.5, type=float, required=False)
+    parser.add_argument("--emd_loss_weight", default=0.2, type=float, required=False)
     parser.add_argument("--threshold", default=0.5, type=float, required=False)
     parser.add_argument("--aug_train", default=str(ROOT_DIR / 'data' / 'unlabeled_data'), type=str,
                         required=False)

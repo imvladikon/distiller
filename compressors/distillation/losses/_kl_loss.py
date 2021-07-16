@@ -36,8 +36,9 @@ class KLDivLoss(nn.Module):
 def kl_div_loss(
         s_logits: FloatTensor, t_logits: FloatTensor, temperature: float = 1.0
 ) -> FloatTensor:
-    """KL-devergence loss
-
+    """KL-divergence loss
+    https://arxiv.org/abs/1503.02531
+    Distilling the Knowledge in a Neural Network
     Args:
         s_logits (FloatTensor): output for student model.
         t_logits (FloatTensor): output for teacher model.
