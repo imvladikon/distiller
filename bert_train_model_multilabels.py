@@ -60,7 +60,7 @@ def main(args):
     eval_features = ds["test"]
 
     metric = Multiclasseval()
-    metric.threshold = 0.5
+    metric.threshold = args.threshold
     metric.num_classes = len(label_list)
     compute_metrics = partial(compute_multilabel_metrics, metric=metric)
 
