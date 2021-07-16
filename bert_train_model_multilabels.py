@@ -107,31 +107,33 @@ def main(args):
 
         model.unfreeze_bert_encoder(['pooler', '11', '10', '9', '8', '7', '6', '5'])  # , '9', '8', '7', '6'])
 
-        training_args = TrainingArguments(
-            f"jigsaw training",
-            evaluation_strategy="epoch",
-            learning_rate=args.learning_rate,
-            per_device_train_batch_size=args.train_batch_size,
-            per_device_eval_batch_size=args.val_batch_size,
-            num_train_epochs=args.num_train_epochs,
-            weight_decay=args.weight_decay,
-            load_best_model_at_end=True,
-            save_total_limit=2,
-            report_to=None,
-            gradient_accumulation_steps=args.gradient_accumulation_steps
-        )
+    training_args = TrainingArguments(
+        f"jigsaw training",
+        evaluation_strategy="epoch",
+        learning_rate=args.learning_rate,
+        per_device_train_batch_size=args.train_batch_size,
+        per_device_eval_batch_size=args.val_batch_size,
+        num_train_epochs=args.num_train_epochs,
+        weight_decay=args.weight_decay,
+        load_best_model_at_end=True,
+        save_total_limit=2,
+        report_to=None,
+        gradient_accumulation_steps=args.gradient_accumulation_steps
+    )
 
-        trainer = Trainer(
-            model,
-            training_args,
-            train_dataset=train_features,
-            eval_dataset=eval_features,
-            # data_collator=DataCollatorWithPadding(tokenizer),
-            tokenizer=tokenizer,
-            compute_metrics=compute_metrics,
-            callbacks=[PrinterCallback()],
-            optimizers=(optimizer, scheduler)
-        )
+    trainer = Trainer(
+        model,
+        training_args,
+        train_dataset=train_features,
+        eval_dataset=eval_features,
+        # data_collator=DataCollatorWithPadding(tokenizer),
+        tokenizer=tokenizer,
+        compute_metrics=compute_metrics,
+        callbacks=[PrinterCallback()],
+        optimizers=(optimizer, scheduler)
+    )
+
+    if args.do_train:
         trainer.train()
 
         Path(args.output_dir).mkdir(parents=True, exist_ok=True)
@@ -176,11 +178,9 @@ if __name__ == '__main__':
                              "than this will be truncated, sequences shorter will be padded.")
     parser.add_argument("--do_train",
                         action='store_true',
-                        default=True,
                         help="Whether to run training.")
     parser.add_argument("--do_eval",
                         action='store_true',
-                        default=True,
                         help="Whether to run eval on the dev set.")
     parser.add_argument("--do_lower_case",
                         action='store_true',
