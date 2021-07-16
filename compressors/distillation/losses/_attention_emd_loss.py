@@ -1,7 +1,3 @@
-# http://www.kernel-operations.io/geomloss/index.html
-# https://github.com/lxk00/BERT-EMD
-
-
 from typing import Tuple
 
 import torch
@@ -51,6 +47,19 @@ class AttentionEmdLoss(nn.Module):
                              tea_layer_num,
                              T,
                              type_update='att'):
+        """
+        https://github.com/lxk00/BERT-EMD
+        Args:
+            trans_matrix:
+            distance_matrix:
+            stu_layer_num:
+            tea_layer_num:
+            T:
+            type_update:
+
+        Returns:
+
+        """
         if type_update == 'att':
             student_layer_weight = np.copy(self.att_student_weight)
             teacher_layer_weight = np.copy(self.att_teacher_weight)
@@ -94,6 +103,20 @@ class AttentionEmdLoss(nn.Module):
                          teacher_reps,
                          device):
 
+        """
+        https://github.com/lxk00/BERT-EMD
+        added attention sum reduction for comparing different number of atts.
+        Args:
+            student_atts:
+            teacher_atts:
+            student_reps:
+            teacher_reps:
+            device:
+
+        Returns:
+
+        """
+
         def embedding_rep_loss(student_reps, teacher_reps, student_layer_weight, teacher_layer_weight,
                                stu_layer_num, tea_layer_num):
             student_layer_weight = np.concatenate((student_layer_weight, np.zeros(tea_layer_num)))
@@ -101,9 +124,9 @@ class AttentionEmdLoss(nn.Module):
             totol_num = stu_layer_num + tea_layer_num
             distance_matrix = torch.zeros([totol_num, totol_num]).to(device)
             for i in range(stu_layer_num):
-                student_rep = student_reps[i]
+                student_rep = student_reps[i].sum(dim=1)
                 for j in range(tea_layer_num):
-                    teacher_rep = teacher_reps[j][:, -student_rep.shape[1]:, :, :]
+                    teacher_rep = teacher_reps[j].sum(dim=1) #[:, -student_rep.shape[1]:, :, :]
                     tmp_loss = self.loss_mse_fn(student_rep, teacher_rep)
                     # tmp_loss = torch.nn.functional.normalize(tmp_loss, p=2, dim=2)
                     distance_matrix[i][j + stu_layer_num] = distance_matrix[j + stu_layer_num][i] = tmp_loss
@@ -121,9 +144,9 @@ class AttentionEmdLoss(nn.Module):
             totol_num = stu_layer_num + tea_layer_num
             distance_matrix = torch.zeros([totol_num, totol_num]).to(device)
             for i in range(stu_layer_num):
-                student_rep = student_reps[i + 1]
+                student_rep = student_reps[i + 1].sum(dim=1)
                 for j in range(tea_layer_num):
-                    teacher_rep = teacher_reps[j + 1][:, -student_rep.shape[1]:, :, :]
+                    teacher_rep = teacher_reps[j + 1].sum(dim=1)#[:, -student_rep.shape[1]:, :, :]
                     tmp_loss = self.loss_mse_fn(student_rep, teacher_rep)
                     # tmp_loss = torch.nn.functional.normalize(tmp_loss, p=2, dim=2)
                     distance_matrix[i][j + stu_layer_num] = distance_matrix[j + stu_layer_num][i] = tmp_loss
@@ -142,9 +165,9 @@ class AttentionEmdLoss(nn.Module):
             totol_num = stu_layer_num + tea_layer_num
             distance_matrix = torch.zeros([totol_num, totol_num]).to(device)
             for i in range(stu_layer_num):
-                student_att = student_atts[i]
+                student_att = student_atts[i].sum(dim=1)
                 for j in range(tea_layer_num):
-                    teacher_att = teacher_atts[j][:, -student_att.shape[1]:, :, :]
+                    teacher_att = teacher_atts[j].sum(dim=1) # [:, -student_att.shape[1]:, :, :]
                     student_att = torch.where(student_att <= -1e2, torch.zeros_like(student_att).to(device),
                                               student_att)
                     teacher_att = torch.where(teacher_att <= -1e2, torch.zeros_like(teacher_att).to(device),
