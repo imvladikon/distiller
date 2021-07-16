@@ -1,8 +1,6 @@
 numpy
 pandas
 sklearn
-matplotlib
-seaborn
 torch
 catalyst
 transformers
