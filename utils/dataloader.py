@@ -431,10 +431,8 @@ def read_as_dataset(
         print(pd.DataFrame(freq_map).T)
 
     df[label_column] = list(df[label_cols].values)
-    if transform_label_fn is None:
-        transform_label_fn = lambda l: [int(k in l) for k in label2id]
-
-    df[label_column] = df[label_column].map(transform_label_fn)
+    if transform_label_fn is not None:
+        df[label_column] = df[label_column].map(transform_label_fn)
     ds = Dataset.from_pandas(df[[text_column, label_column]])
     return ds
 
@@ -487,18 +485,19 @@ def read_data(
             )
         )
 
-    cols = datasets["train"].column_names
-    cols.remove("labels")
+    if tokenizer is not None:
+        cols = datasets["train"].column_names
+        cols.remove("labels")
 
-    datasets = datasets.map(
-        lambda e: tokenizer(e[text_column], truncation=True, padding="max_length", max_length=max_seq_length),
-        batched=True,
-        remove_columns=cols
-    )
+        datasets = datasets.map(
+            lambda e: tokenizer(e[text_column], truncation=True, padding="max_length", max_length=max_seq_length),
+            batched=True,
+            remove_columns=cols
+        )
 
-    datasets.set_format(
-        type="torch", columns=["input_ids", "token_type_ids", "attention_mask", "labels"]
-    )
+        datasets.set_format(
+            type="torch", columns=["input_ids", "token_type_ids", "attention_mask", "labels"]
+        )
     return datasets
 
 
