@@ -61,7 +61,7 @@ def main(args):
     logger.info(f'teacher model: {str(args.teacher_model_name)}')
     logger.info(f'student model: {str(args.student_model_name)}')
 
-    tokenizer = AutoTokenizer.from_pretrained(args.bert_tokenizer, do_lower_case=args.do_lower_case)
+    tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_name, do_lower_case=args.do_lower_case)
 
     label_list = labels
     teacher_model = BertForMultiLabelSequenceClassification.from_pretrained(args.teacher_model_name,
@@ -299,17 +299,17 @@ if __name__ == "__main__":
     parser.add_argument("--do_lower_case", action='store_true',
                         help="Set this flag if you are using an uncased model.")
     parser.add_argument("--val_filename", default=str(ROOT_DIR / "data" / "0" / "test.csv"), type=str, required=False)
-    parser.add_argument("--one_cycle_train", default=True, type=bool, required=False)
-    parser.add_argument("--train_format_with_proba", default=False, type=bool, required=False)
+    parser.add_argument("--one_cycle_train", default=True, action='store_true', required=False)
+    parser.add_argument("--train_format_with_proba", default=False, action='store_true', required=False)
     parser.add_argument("--train_size", default=-1, type=int, required=False)
     parser.add_argument("--val_size", default=-1, type=int, required=False)
     parser.add_argument("--data_dir", default=str(ROOT_DIR / 'data'), type=str, required=False)
     parser.add_argument("--task_name", default='email_reject', type=str, required=False)
-    parser.add_argument("--bert_tokenizer", default="bert-base-uncased", type=str, required=False)
-    parser.add_argument("--config_name", default="", type=str,
-                        help="Pretrained config name or path if not the same as model_name")
-    parser.add_argument("--tokenizer_name", default="", type=str,
-                        help="Pretrained tokenizer name or path if not the same as model_name")
+    parser.add_argument("--tokenizer_name",
+                        default="bert-base-uncased",
+                        type=str,
+                        help="Pretrained tokenizer name or path if not the same as model_name",
+                        required=False)
     parser.add_argument("--output_model_dir", default=str(ROOT_DIR / 'models' / 'distill'), type=str, required=False)
     parser.add_argument("--data_output_dir", default=(ROOT_DIR / 'data' / 'class' / 'output'), type=str, required=False)
     parser.add_argument("--train_batch_size", default=24, type=int, required=False)
