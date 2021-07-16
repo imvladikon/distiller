@@ -1,9 +1,8 @@
 import argparse
 
-import matplotlib
+from transformers.modelcard import TrainingSummary
 
 from config.datasets import DataFactory, DATASETS_CONFIG_INFO
-from config.google_students_models import get_student_models
 from const import *
 from metrics.multiclasseval import Multiclasseval
 from metrics.utils import compute_multilabel_metrics
@@ -11,7 +10,6 @@ from utils import set_seed, dotdict
 import logging
 import torch
 from functools import partial
-from modeling.gong import bert_seq_classification as bsc
 from modeling.bert_multilabel_classification import BertForMultiLabelSequenceClassification
 from modeling.bert_cnn_classification import BertForClassificationCNN
 
@@ -19,7 +17,9 @@ from transformers import (AutoTokenizer,
                           Trainer,
                           TrainerCallback,
                           AdamW,
-                          get_linear_schedule_with_warmup, TrainingArguments, PrinterCallback)
+                          get_linear_schedule_with_warmup,
+                          TrainingArguments,
+                          PrinterCallback)
 
 logging.basicConfig(format='%(asctime)s\t%(levelname)s\t%(name)s\t%(message)s',
                     datefmt='%Y-%m-%d %H:%M:%S',
@@ -77,6 +77,15 @@ def main(args):
         report_to=None
     )
 
+    optimizer = AdamW(model.parameters(),
+                      lr=args.learning_rate,
+                      eps=1e-8)
+
+    total_steps = len(train_features) * args.num_train_epochs
+    scheduler = get_linear_schedule_with_warmup(optimizer,
+                                                num_warmup_steps=0,  # Default value in run_glue.py
+                                                num_training_steps=total_steps)
+
     trainer = Trainer(
         model,
         training_args,
@@ -85,7 +94,8 @@ def main(args):
         # data_collator=DataCollatorWithPadding(tokenizer),
         tokenizer=tokenizer,
         compute_metrics=compute_metrics,
-        callbacks=[PrinterCallback()]
+        callbacks=[PrinterCallback()],
+        optimizers=(optimizer, scheduler)
     )
 
     if args.do_train:
@@ -113,7 +123,8 @@ def main(args):
                 # data_collator=DataCollatorWithPadding(tokenizer),
                 tokenizer=tokenizer,
                 compute_metrics=compute_metrics,
-                callbacks=[PrinterCallback()]
+                callbacks=[PrinterCallback()],
+                optimizers=(optimizer, scheduler)
             )
             trainer.train()
 
@@ -122,6 +133,20 @@ def main(args):
 
         Path(args.output_dir).mkdir(parents=True, exist_ok=True)
         trainer.save_model(args.output_dir)
+
+        training_summary = TrainingSummary.from_trainer(
+            trainer,
+            language="en",
+            license=license,
+            model_name=args.model_name,
+            finetuned_from="",
+            tasks="multilabels classification",
+            dataset=args.dataset_config,
+            dataset_args={},
+        )
+        model_card = training_summary.to_model_card()
+        with open(os.path.join(args.output_dir, "README.md"), "w") as f:
+            f.write(model_card)
 
     if args.do_eval:
         logger.info('evaluation')
