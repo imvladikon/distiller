@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 
 from config.datasets.base_dataset_config import BaseDatasetConfig
 from const import ROOT_DIR
@@ -16,9 +15,17 @@ class JigsawDatasetConfig(BaseDatasetConfig):
         'insult', 'identity_hate'
     ]
 
-    labels_columns = labels
+    labels_columns = [f"was_label_{col}" for col in labels]
 
     id2label = {k: v for k, v in enumerate(labels)}
     label2id = {v: k for k, v in id2label.items()}
 
     text_column = "comment_text"
+
+
+if __name__ == '__main__':
+    from config.datasets import DataFactory
+
+    ds = DataFactory.create_from_config("jigsaw")
+    dataset_info = ds.config
+    ds = ds.dataset

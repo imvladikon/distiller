@@ -3,8 +3,14 @@ from const import ROOT_DIR
 from functools import partial
 
 
-def transform_label_fn_(l, label2id):
-    return [int(k in l) for k in label2id]
+def transform_label_fn_(ll):
+    """
+    transform_label_fn_([-1,0,0,0,1,-1]) = [0,0,0,0,1,0]
+    Args:
+        threshold:
+    Returns:
+    """
+    return [int(l > 0) for l in ll]
 
 
 class GongHardDatasetConfig(BaseDatasetConfig):
@@ -24,12 +30,19 @@ class GongHardDatasetConfig(BaseDatasetConfig):
         "contract",
         "reply"
     ]
-    labels_columns = labels
+    labels_columns = [f"was_label_{col}" for col in labels]
 
     id2label = {k: v for k, v in enumerate(labels)}
     label2id = {v: k for k, v in id2label.items()}
 
     text_column = "document_text"
 
-    transform_label_fn = partial(transform_label_fn_, label2id=label2id)
+    transform_label_fn = transform_label_fn_
     processing_data_fn = None
+
+if __name__ == '__main__':
+    from config.datasets import DataFactory
+
+    ds = DataFactory.create_from_config("gong_hard_labels")
+    dataset_info = ds.config
+    ds = ds.dataset

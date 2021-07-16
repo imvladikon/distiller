@@ -10,11 +10,16 @@ def transform_label_fn_(ll, threshold):
 
 class GongSoftDatasetConfig(BaseDatasetConfig):
     train_filename = str(ROOT_DIR / "data" / "0" / "train_weak_label_bin_email_id.csv")
-    val_filename = str(ROOT_DIR / "data" / "0" / "test.csv")
-    test_filename = str(ROOT_DIR / "data" / "0" / "test.csv")
 
-    load_test_from_file = True
+    """
+    test file doesn't have a probabilites, then we skip it
+    """
+    # val_filename = str(ROOT_DIR / "data" / "0" / "test.csv")
+    # test_filename = str(ROOT_DIR / "data" / "0" / "test.csv")
+
+    load_test_from_file = False
     threshold = 0.8
+    val_split_size = 0.2
 
     labels = [
         "reject",
@@ -35,3 +40,10 @@ class GongSoftDatasetConfig(BaseDatasetConfig):
 
     transform_label_fn = partial(transform_label_fn_, threshold=threshold)
     processing_data_fn = None
+
+if __name__ == '__main__':
+    from config.datasets import DataFactory
+
+    ds = DataFactory.create_from_config("gong_soft_labels")
+    dataset_info = ds.config
+    ds = ds.dataset

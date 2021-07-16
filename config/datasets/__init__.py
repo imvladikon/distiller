@@ -1,7 +1,7 @@
 from config.datasets.gong_hard_labels import GongHardDatasetConfig
 from config.datasets.gong_soft_labels import GongSoftDatasetConfig
 from config.datasets.jigsaw_info import JigsawDatasetConfig
-from utils.dataloader import read_data
+from config.datasets.utils import read_data
 
 DATASETS_CONFIG_INFO = {
     "jigsaw": JigsawDatasetConfig,
@@ -23,10 +23,10 @@ class DataFactory:
         ds = read_data(
             train_filename=ds_info.train_filename,
             val_filename=ds_info.val_filename,
-            tokenizer=kwargs["tokenizer"],
-            max_seq_length=kwargs["max_length"],
-            train_size=kwargs["train_size"],
-            val_size=kwargs["val_size"],
+            tokenizer=kwargs.get("tokenizer", None),
+            max_seq_length=kwargs.get("max_length", 512),
+            train_size=kwargs.get("train_size", -1),
+            val_size=kwargs.get("val_size", -1),
             map_label_columns=dict(zip(ds_info.labels, ds_info.labels_columns)),
             text_column=ds_info.text_column,
             val_split_size=ds_info.val_split_size,
