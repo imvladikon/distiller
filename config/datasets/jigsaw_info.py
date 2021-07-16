@@ -15,8 +15,7 @@ class JigsawDatasetConfig(BaseDatasetConfig):
         'insult', 'identity_hate'
     ]
 
-    labels_columns = [f"was_label_{col}" for col in labels]
-
+    labels_columns = labels
     id2label = {k: v for k, v in enumerate(labels)}
     label2id = {v: k for k, v in id2label.items()}
 

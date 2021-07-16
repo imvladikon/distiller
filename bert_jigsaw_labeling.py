@@ -5,14 +5,12 @@ import matplotlib
 from config.datasets import DataFactory
 from config.google_students_models import get_student_models
 from const import *
+from metrics.multiclasseval import Multiclasseval
+from metrics.utils import compute_multilabel_metrics
 from utils import set_seed, dotdict
-from utils.dataloader import load_dataset, read_data
-
-matplotlib.use("agg")
-
 import logging
 import torch
-
+from functools import partial
 from modeling.gong import bert_seq_classification as bsc
 from modeling.bert_multilabel_classification import BertForMultiLabelSequenceClassification
 from modeling.bert_cnn_classification import BertForClassificationCNN
@@ -21,7 +19,7 @@ from transformers import (AutoTokenizer,
                           Trainer,
                           TrainerCallback,
                           AdamW,
-                          get_linear_schedule_with_warmup)
+                          get_linear_schedule_with_warmup, TrainingArguments, PrinterCallback)
 
 logging.basicConfig(format='%(asctime)s\t%(levelname)s\t%(name)s\t%(message)s',
                     datefmt='%Y-%m-%d %H:%M:%S',
@@ -55,27 +53,74 @@ def main(args):
     model = BertForMultiLabelSequenceClassification.from_pretrained(args.model_name,
                                                                     num_labels=len(label_list)).to(device)
     # model.resize_token_embeddings(len(tokenizer))
-
-
-    # loaders = datasets_as_loaders(ds, batch_size=64)
+    model.config.label2id = label2id
+    model.config.id2label = id2label
 
     train_features = ds["train"]
     eval_features = ds["test"]
+
+    metric = Multiclasseval()
+    metric.threshold = 0.5
+    metric.num_classes = len(label_list)
+    compute_metrics = partial(compute_multilabel_metrics, metric=metric)
 
     if args.do_train:
         logger.info('Training')
 
         if args.one_cycle_train:
             model.unfreeze_bert_encoder(['pooler'])
-            prev_num_train_epochs = args.num_train_epochs
-            args.num_train_epochs = 1
-            bsc.train(args, train_features, model, device)
-            args.num_train_epochs = prev_num_train_epochs
+            training_args = TrainingArguments(
+                f"jigsaw training, one_cycle_train",
+                evaluation_strategy="epoch",
+                learning_rate=args.learning_rate,
+                per_device_train_batch_size=args.train_batch_size,
+                per_device_eval_batch_size=args.val_batch_size,
+                num_train_epochs=1,
+                weight_decay=args.weight_decay,
+                load_best_model_at_end=True,
+                save_total_limit=2,
+                report_to=None
+            )
+            trainer = Trainer(
+                model,
+                training_args,
+                train_dataset=train_features,
+                eval_dataset=eval_features,
+                # data_collator=DataCollatorWithPadding(tokenizer),
+                tokenizer=tokenizer,
+                compute_metrics=compute_metrics,
+                callbacks=[PrinterCallback()]
+            )
+            trainer.train()
 
-        # args.num_train_epochs = prev_num_train_epochs
         model.unfreeze_bert_encoder(['pooler', '11', '10', '9', '8', '7', '6', '5'])  # , '9', '8', '7', '6'])
-        global_step, tr_loss = bsc.train(args, train_features, model, device)
-        logger.info(" global_step = %s, average loss = %s", global_step, tr_loss)
+
+        training_args = TrainingArguments(
+            f"jigsaw training",
+            evaluation_strategy="epoch",
+            learning_rate=args.learning_rate,
+            per_device_train_batch_size=args.train_batch_size,
+            per_device_eval_batch_size=args.val_batch_size,
+            num_train_epochs=args.num_train_epochs,
+            weight_decay=args.weight_decay,
+            load_best_model_at_end=True,
+            save_total_limit=2,
+            report_to=None
+        )
+
+        trainer = Trainer(
+            model,
+            training_args,
+            train_dataset=ds["train"],
+            eval_dataset=ds["test"],
+            # data_collator=DataCollatorWithPadding(tokenizer),
+            tokenizer=tokenizer,
+            compute_metrics=compute_metrics,
+            callbacks=[PrinterCallback()]
+        )
+
+        trainer.train()
+        trainer.evaluate()
 
         if not args.output_model_dir.exists():
             args.output_model_dir.resolve().mkdir(parents=True)
@@ -140,7 +185,7 @@ if __name__ == '__main__':
                         help="Number of updates steps to accumulate before performing a backward/update pass.")
     parser.add_argument("--learning_rate", default=3e-5, type=float,
                         help="The initial learning rate for Adam.")
-    parser.add_argument("--weight_decay", default=0.0, type=float,
+    parser.add_argument("--weight_decay", default=0.01, type=float,
                         help="Weight deay if we apply some.")
     parser.add_argument("--adam_epsilon", default=1e-8, type=float,
                         help="Epsilon for Adam optimizer.")
