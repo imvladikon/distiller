@@ -709,7 +709,7 @@ def train(args, train_data, model, device, is_multilabel=True):
             nb_tr_steps += 1
             if (step + 1) % args['gradient_accumulation_steps'] == 0:
                 if scheduler:
-                    scheduler.batch_step()
+                    scheduler.step()
                 # modify learning rate with special warm up BERT uses
                 lr_this_step = args['learning_rate'] * warmup_linear(global_step / t_total, args['warmup_proportion'])
                 for param_group in optimizer.param_groups:
