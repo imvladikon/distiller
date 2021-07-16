@@ -2,7 +2,7 @@ import argparse
 
 import matplotlib
 
-from config.datasets import DataFactory
+from config.datasets import DataFactory, DATASETS_CONFIG_INFO
 from config.google_students_models import get_student_models
 from const import *
 from metrics.multiclasseval import Multiclasseval
@@ -29,16 +29,16 @@ logger = logging.getLogger(__name__)
 
 
 def main(args):
-    tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_name)
-    ds = DataFactory.create_from_config(args.dataset_config,
-                                        tokenizer=tokenizer,
-                                        max_length=args.max_seq_length,
-                                        train_size=args.train_size,
-                                        val_size=args.val_size)
-    dataset_info = ds.config
-    ds = ds.dataset
+    tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_name, do_lower_case=args.do_lower_case)
 
-    labels = dataset_info.labels
+    ds_with_info = DataFactory.create_from_config(args.dataset_config,
+                                                  tokenizer=tokenizer,
+                                                  max_length=args.max_seq_length,
+                                                  train_size=args.train_size,
+                                                  val_size=args.val_size)
+    dataset_info = ds_with_info.config
+    ds = ds_with_info.dataset
+
     id2label = dataset_info.id2label
     label2id = dataset_info.label2id
     label_list = dataset_info.labels
@@ -63,6 +63,30 @@ def main(args):
     metric.threshold = 0.5
     metric.num_classes = len(label_list)
     compute_metrics = partial(compute_multilabel_metrics, metric=metric)
+
+    training_args = TrainingArguments(
+        f"jigsaw training",
+        evaluation_strategy="epoch",
+        learning_rate=args.learning_rate,
+        per_device_train_batch_size=args.train_batch_size,
+        per_device_eval_batch_size=args.val_batch_size,
+        num_train_epochs=args.num_train_epochs,
+        weight_decay=args.weight_decay,
+        load_best_model_at_end=True,
+        save_total_limit=2,
+        report_to=None
+    )
+
+    trainer = Trainer(
+        model,
+        training_args,
+        train_dataset=ds["train"],
+        eval_dataset=ds["test"],
+        # data_collator=DataCollatorWithPadding(tokenizer),
+        tokenizer=tokenizer,
+        compute_metrics=compute_metrics,
+        callbacks=[PrinterCallback()]
+    )
 
     if args.do_train:
         logger.info('Training')
@@ -94,67 +118,51 @@ def main(args):
             trainer.train()
 
         model.unfreeze_bert_encoder(['pooler', '11', '10', '9', '8', '7', '6', '5'])  # , '9', '8', '7', '6'])
-
-        training_args = TrainingArguments(
-            f"jigsaw training",
-            evaluation_strategy="epoch",
-            learning_rate=args.learning_rate,
-            per_device_train_batch_size=args.train_batch_size,
-            per_device_eval_batch_size=args.val_batch_size,
-            num_train_epochs=args.num_train_epochs,
-            weight_decay=args.weight_decay,
-            load_best_model_at_end=True,
-            save_total_limit=2,
-            report_to=None
-        )
-
-        trainer = Trainer(
-            model,
-            training_args,
-            train_dataset=ds["train"],
-            eval_dataset=ds["test"],
-            # data_collator=DataCollatorWithPadding(tokenizer),
-            tokenizer=tokenizer,
-            compute_metrics=compute_metrics,
-            callbacks=[PrinterCallback()]
-        )
-
         trainer.train()
-        trainer.evaluate()
 
-        if not args.output_model_dir.exists():
-            args.output_model_dir.resolve().mkdir(parents=True)
-
-        model.save_pretrained(args.output_model_dir)
+        Path(args.output_dir).mkdir(parents=True, exist_ok=True)
+        trainer.save_model(args.output_dir)
 
     if args.do_eval:
-        logger.info('Testing')
-        logits, true_class, guids = bsc.predict(eval_features, model, device, eval_batch_size=args.eval_batch_size)
-        all_proba = torch.sigmoid(torch.Tensor(logits))
-        thresh = 0.8
-        predicted_class = (all_proba >= thresh).numpy().astype(float)
-        # ones = np.maximum(predicted_class, true_class)*0.9998 + 0.0001
+        logger.info('evaluation')
+        trainer.evaluate()
+
+        (Path(args.output_dir) / "metrics").mkdir(parents=True, exist_ok=True)
+        trainer.save_metrics(str(Path(args.output_dir) / "metrics"))
 
 
 if __name__ == '__main__':
-    hidden_size, num_layers = 256, 6
-    student_model_name = get_student_models(hidden_size=hidden_size, num_layers=num_layers)
+    parser = argparse.ArgumentParser(description='training and evaluation bert model')
 
-    parser = argparse.ArgumentParser(description='Jigsaw training and evaluation bert model')
-    parser.add_argument("--model_name", default=student_model_name, type=str,
-                        required=False)
-    parser.add_argument("--dataset_config", default="jigsaw", type=str,
-                        required=False)
-    parser.add_argument("--max_seq_length", default=512, type=int,
+    parser.add_argument("--model_name", default="", type=str,
+                        required=True)
+    parser.add_argument("--dataset_config",
+                        default="",
+                        type=str,
+                        required=True,
+                        choices=list(DATASETS_CONFIG_INFO.keys()),
+                        help="need to choose a dataset config")
+    parser.add_argument("--max_seq_length",
+                        default=512,
+                        type=int,
                         help="The maximum total input sequence length after tokenization. Sequences longer "
                              "than this will be truncated, sequences shorter will be padded.")
-    parser.add_argument("--do_train", action='store_true', default=True,
+    parser.add_argument("--do_train",
+                        action='store_true',
+                        default=True,
                         help="Whether to run training.")
-    parser.add_argument("--do_eval", action='store_true', default=True,
+    parser.add_argument("--do_eval",
+                        action='store_true',
+                        default=True,
                         help="Whether to run eval on the dev set.")
-    parser.add_argument("--do_lower_case", action='store_true',
+    parser.add_argument("--do_lower_case",
+                        action='store_true',
+                        default=True,
                         help="Set this flag if you are using an uncased model.")
-    parser.add_argument("--one_cycle_train", default=True, action='store_true', required=False)
+    parser.add_argument("--one_cycle_train",
+                        default=True,
+                        action='store_true',
+                        required=False)
     parser.add_argument("--train_size", default=-1, type=int, required=False)
     parser.add_argument("--val_size", default=-1, type=int, required=False)
     parser.add_argument("--tokenizer_name",
@@ -162,14 +170,17 @@ if __name__ == '__main__':
                         type=str,
                         help="Pretrained tokenizer name or path if not the same as model_name",
                         required=False)
-    parser.add_argument("--output_model_dir", default=str(ROOT_DIR / 'models' / 'distill'), type=str, required=False)
+
+    parser.add_argument("--output_dir", default=None, type=str, required=False,
+                        help="The output directory where the model predictions and checkpoints will be written.")
+
     parser.add_argument("--train_batch_size", default=24, type=int, required=False)
     parser.add_argument("--val_batch_size", default=12, type=int, required=False)
     parser.add_argument("--n_threads", default=4, type=int, required=False)
     parser.add_argument("--warmup_linear", default=0.1, type=float, required=False)
     parser.add_argument("--optimize_on_cpu", default=True, type=bool, required=False)
     parser.add_argument("--loss_scale", default=128, type=int, required=False)
-    parser.add_argument("--labels_list", default=labels, type=list, required=False)
+
     parser.add_argument("--use_wandb", default=False, type=bool, required=False)
     parser.add_argument("--wandb_token", default='', type=str, required=False)
     parser.add_argument("--wandb_note", default='', type=str, required=False)
@@ -177,6 +188,7 @@ if __name__ == '__main__':
     parser.add_argument("--wandb_entity", default='', type=str, required=False)
     parser.add_argument("--wandb_group", default='', type=str, required=False)
     parser.add_argument("--wandb_name", default='', type=str, required=False)
+
     parser.add_argument("--per_gpu_train_batch_size", default=8, type=int,
                         help="Batch size per GPU/CPU for training.")
     parser.add_argument("--per_gpu_eval_batch_size", default=8, type=int,
@@ -217,8 +229,6 @@ if __name__ == '__main__':
     parser.add_argument("--local_rank", type=int, default=-1,
                         help="For distributed training: local_rank")
     parser.add_argument("--threshold", default=0.5, type=float, required=False)
-    parser.add_argument("--output_dir", default=None, type=str, required=False,
-                        help="The output directory where the model predictions and checkpoints will be written.")
 
     args = parser.parse_args()
     set_seed(args.seed)
