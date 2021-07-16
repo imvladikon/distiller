@@ -31,16 +31,17 @@ def read_as_dataset(
     if processing_data_fn is not None:
         df = processing_data_fn(df, text_column)
     label_column = "labels"
-    if print_label_dist:
-        freq_map = {
-            col: list(zip(*np.unique(df[label_cols[0]].values, return_counts=True)))
-            for col in label_cols
-        }
-        print(pd.DataFrame(freq_map).T)
-
     df[label_column] = list(df[label_cols].values)
     if transform_label_fn is not None:
         df[label_column] = df[label_column].map(transform_label_fn)
+    if print_label_dist:
+        labels_numpy = np.array(df[label_column].tolist())
+        freq_map = pd.DataFrame([
+            {"col": label, **dict(zip(*np.unique(labels_numpy[:, idx], return_counts=True)))
+             } for idx, label in enumerate(label_list)
+        ]).T
+        print(freq_map)
+        del labels_numpy
     ds = Dataset.from_pandas(df[[text_column, label_column]])
     return ds
 
