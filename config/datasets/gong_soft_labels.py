@@ -44,6 +44,9 @@ class GongSoftDatasetConfig(BaseDatasetConfig):
 if __name__ == '__main__':
     from config.datasets import DataFactory
 
-    ds = DataFactory.create_from_config("gong_soft_labels")
+    from transformers import AutoTokenizer
+    tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased", do_lower_case=True)
+
+    ds = DataFactory.create_from_config("gong_soft_labels", tokenizer=tokenizer, max_length=512)
     dataset_info = ds.config
     ds = ds.dataset

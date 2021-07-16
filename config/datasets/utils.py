@@ -31,9 +31,13 @@ def read_as_dataset(
     label2id = {v: k for k, v in id2label.items()}
     logger.info("LOOKING AT {}".format(filename))
     if data_size != -1:
-        df = pd.read_csv(filename).sample(data_size).reset_index(drop=True)
+        df = (pd
+              .read_csv(filename)
+              .sample(data_size)
+              .reset_index(drop=True))
     else:
         df = pd.read_csv(filename).reset_index(drop=True)
+    df = df[~df[text_column].isna()].reset_index(drop=True)
     if processing_data_fn is not None:
         df = processing_data_fn(df, text_column)
     label_column = "labels"
