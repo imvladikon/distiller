@@ -64,19 +64,6 @@ def main(args):
     metric.num_classes = len(label_list)
     compute_metrics = partial(compute_multilabel_metrics, metric=metric)
 
-    training_args = TrainingArguments(
-        f"jigsaw training",
-        evaluation_strategy="epoch",
-        learning_rate=args.learning_rate,
-        per_device_train_batch_size=args.train_batch_size,
-        per_device_eval_batch_size=args.val_batch_size,
-        num_train_epochs=args.num_train_epochs,
-        weight_decay=args.weight_decay,
-        load_best_model_at_end=True,
-        save_total_limit=2,
-        report_to=None
-    )
-
     optimizer = AdamW(model.parameters(),
                       lr=args.learning_rate,
                       eps=1e-8)
@@ -85,18 +72,6 @@ def main(args):
     scheduler = get_linear_schedule_with_warmup(optimizer,
                                                 num_warmup_steps=0,  # Default value in run_glue.py
                                                 num_training_steps=total_steps)
-
-    trainer = Trainer(
-        model,
-        training_args,
-        train_dataset=ds["train"],
-        eval_dataset=ds["test"],
-        # data_collator=DataCollatorWithPadding(tokenizer),
-        tokenizer=tokenizer,
-        compute_metrics=compute_metrics,
-        callbacks=[PrinterCallback()],
-        optimizers=(optimizer, scheduler)
-    )
 
     if args.do_train:
         logger.info('Training')
@@ -113,7 +88,8 @@ def main(args):
                 weight_decay=args.weight_decay,
                 load_best_model_at_end=True,
                 save_total_limit=2,
-                report_to=None
+                report_to=None,
+                gradient_accumulation_steps=args.gradient_accumulation_steps
             )
             trainer = Trainer(
                 model,
@@ -129,6 +105,32 @@ def main(args):
             trainer.train()
 
         model.unfreeze_bert_encoder(['pooler', '11', '10', '9', '8', '7', '6', '5'])  # , '9', '8', '7', '6'])
+
+        training_args = TrainingArguments(
+            f"jigsaw training",
+            evaluation_strategy="epoch",
+            learning_rate=args.learning_rate,
+            per_device_train_batch_size=args.train_batch_size,
+            per_device_eval_batch_size=args.val_batch_size,
+            num_train_epochs=args.num_train_epochs,
+            weight_decay=args.weight_decay,
+            load_best_model_at_end=True,
+            save_total_limit=2,
+            report_to=None,
+            gradient_accumulation_steps=args.gradient_accumulation_steps
+        )
+
+        trainer = Trainer(
+            model,
+            training_args,
+            train_dataset=train_features,
+            eval_dataset=eval_features,
+            # data_collator=DataCollatorWithPadding(tokenizer),
+            tokenizer=tokenizer,
+            compute_metrics=compute_metrics,
+            callbacks=[PrinterCallback()],
+            optimizers=(optimizer, scheduler)
+        )
         trainer.train()
 
         Path(args.output_dir).mkdir(parents=True, exist_ok=True)
