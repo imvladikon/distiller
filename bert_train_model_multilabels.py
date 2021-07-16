@@ -103,6 +103,7 @@ def main(args):
                 optimizers=(optimizer, scheduler)
             )
             trainer.train()
+            args.num_train_epochs -= 1
 
         model.unfreeze_bert_encoder(['pooler', '11', '10', '9', '8', '7', '6', '5'])  # , '9', '8', '7', '6'])
 
@@ -144,7 +145,6 @@ def main(args):
             finetuned_from="",
             tasks="multilabels classification",
             dataset=args.dataset_config,
-            dataset_args={},
         )
         model_card = training_summary.to_model_card()
         with open(os.path.join(args.output_dir, "README.md"), "w") as f:
