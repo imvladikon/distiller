@@ -62,6 +62,8 @@ def main(args):
     metric = Multiclasseval()
     metric.threshold = args.threshold
     metric.num_classes = len(label_list)
+    metric.labels = label_list
+    metric.calculate_per_class = args.calculate_per_class
     compute_metrics = partial(compute_multilabel_metrics, metric=metric)
 
     optimizer = AdamW(model.parameters(),
@@ -182,6 +184,9 @@ if __name__ == '__main__':
     parser.add_argument("--do_eval",
                         action='store_true',
                         help="Whether to run eval on the dev set.")
+    parser.add_argument("--calculate_per_class",
+                        action='store_true',
+                        help="Calculate metrics per class")
     parser.add_argument("--do_lower_case",
                         action='store_true',
                         default=True,
