@@ -1,4 +1,3 @@
-
 """
 Well-Read Students Learn Better:
 On the Importance of Pre-training Compact Models
@@ -28,14 +27,27 @@ def get_student_models(hidden_size, num_layers):
     num_attention_heads = num_hidden_num_attention_heads_mapping[hidden_size]
     return f"google/bert_uncased_L-{num_layers}_H-{hidden_size}_A-{num_attention_heads}"
 
+
 def all_google_students():
     for hidden_size in [128, 256, 512, 768]:
         for num_layers in [2, 4, 6, 8, 10, 12]:
             yield get_student_models(hidden_size, num_layers)
 
 
+def create_student_model(hidden_size,
+                         num_hidden_layers,
+                         num_attention_heads):
+    config = BertConfig(
+        hidden_size=hidden_size,
+        num_hidden_layers=num_hidden_layers,
+        num_attention_heads=num_attention_heads,
+    )
+    model = BertModel(config)
+    return model
+
+
 if __name__ == '__main__':
-    from transformers import AutoModel
+    from transformers import AutoModel, BertConfig, BertModel
 
     hidden_size, num_layers = 256, 4
     num_attention_heads = num_hidden_num_attention_heads_mapping[hidden_size]
