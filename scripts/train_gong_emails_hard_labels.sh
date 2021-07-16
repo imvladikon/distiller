@@ -1,4 +1,5 @@
-export ROOT_DIR=".."
+cd ..
+export ROOT_DIR=`pwd`
 mkdir -p $ROOT_DIR/models/gong_hard_labels
 cd $ROOT_DIR/models/gong_hard_labels &&
   python3 $ROOT_DIR/bert_train_model_multilabels.py \
