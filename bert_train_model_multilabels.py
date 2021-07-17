@@ -205,7 +205,7 @@ def main(args):
 
         save_metrics(trainer=trainer,
                      filename=os.path.join(args.output_dir, "eval_results.json"))
-        save_metrics(trainer=trainer,
+        save_metrics_cpu(trainer=trainer,
                      filename=os.path.join(args.output_dir, "eval_results_cpu.json"))
         Path(args.output_dir).mkdir(parents=True, exist_ok=True)
 
