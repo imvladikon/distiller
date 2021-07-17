@@ -34,6 +34,36 @@ AVAILABLE_CLASS_MODELS = {
 }
 
 
+def save_metrics(trainer,
+                 filename,
+                 device=device,
+                 combined=True,
+                 dict_args=None):
+    """
+    customized version of trainer.save_metrics
+    """
+    if device == "cpu":
+        trainer.place_model_on_device = True
+        trainer.model = trainer.model.to(device)
+        dict_args["no_cuda"] = True
+        trainer.args = TrainingArguments(**dict_args)
+    metrics = trainer.evaluate()
+    if not trainer.is_world_process_zero():
+        return
+    with open(filename, "w") as f:
+        json.dump(metrics, f, indent=4, sort_keys=True)
+    if combined:
+        if os.path.exists(filename):
+            with open(filename, "r") as f:
+                all_metrics = json.load(f)
+        else:
+            all_metrics = {}
+        all_metrics.update(metrics)
+        with open(filename, "w") as f:
+            json.dump(all_metrics, f, indent=4, sort_keys=True)
+    return metrics
+
+
 def main(args):
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_name, do_lower_case=args.do_lower_case)
 
@@ -85,7 +115,7 @@ def main(args):
     scheduler = get_linear_schedule_with_warmup(optimizer,
                                                 num_warmup_steps=0,  # Default value in run_glue.py
                                                 num_training_steps=total_steps)
-
+    report_to = None
     if args.use_wandb:
         import wandb
         wandb.login(key=os.environ.get("WANDB_API_TOKEN", args.wandb_api_token))
@@ -93,27 +123,35 @@ def main(args):
         for v in wandb_env_vars:
             if v.lower() in args and args[v.lower()]:
                 os.environ[v] = args[v.lower()]
+        report_to = "wandb"
     else:
         os.environ["WANDB_DISABLED"] = "true"
+
+    dict_training_args = dict(
+        run_name=f"training",
+        evaluation_strategy="epoch",
+        learning_rate=args.learning_rate,
+        per_device_train_batch_size=args.train_batch_size,
+        per_device_eval_batch_size=args.val_batch_size,
+        num_train_epochs=args.num_train_epochs,
+        weight_decay=args.weight_decay,
+        load_best_model_at_end=True,
+        save_total_limit=2,
+        report_to=report_to,
+        gradient_accumulation_steps=args.gradient_accumulation_steps,
+        output_dir=args.output_dir
+    )
 
     if args.do_train:
         logger.info('Training')
 
         if args.one_cycle_train:
+            import copy
+            dict_training_args_cycle = copy.deepcopy(dict_training_args)
+            dict_training_args_cycle["num_train_epochs"] = 1
+            dict_training_args_cycle["run_name"] = "one_cycle_training"
             model.unfreeze_bert_encoder(['pooler'])
-            training_args = TrainingArguments(
-                f"one_cycle_training",
-                evaluation_strategy="epoch",
-                learning_rate=args.learning_rate,
-                per_device_train_batch_size=args.train_batch_size,
-                per_device_eval_batch_size=args.val_batch_size,
-                num_train_epochs=1,
-                weight_decay=args.weight_decay,
-                load_best_model_at_end=True,
-                save_total_limit=2,
-                report_to=None,
-                gradient_accumulation_steps=args.gradient_accumulation_steps
-            )
+            training_args = TrainingArguments(**dict_training_args_cycle)
             trainer = Trainer(
                 model,
                 training_args,
@@ -126,27 +164,13 @@ def main(args):
                 optimizers=(optimizer, scheduler)
             )
             trainer.train()
-            args.num_train_epochs -= 1
+            dict_training_args_cycle["num_train_epochs"] -= 1
 
         model.unfreeze_bert_encoder(['pooler', '11', '10', '9', '8', '7', '6', '5'])  # , '9', '8', '7', '6'])
 
-    training_args = TrainingArguments(
-        f"training",
-        evaluation_strategy="epoch",
-        learning_rate=args.learning_rate,
-        per_device_train_batch_size=args.train_batch_size,
-        per_device_eval_batch_size=args.val_batch_size,
-        num_train_epochs=args.num_train_epochs,
-        weight_decay=args.weight_decay,
-        load_best_model_at_end=True,
-        save_total_limit=2,
-        report_to=None,
-        gradient_accumulation_steps=args.gradient_accumulation_steps
-    )
-
     trainer = Trainer(
         model,
-        training_args,
+        TrainingArguments(**dict_training_args),
         train_dataset=train_features,
         eval_dataset=eval_features,
         # data_collator=DataCollatorWithPadding(tokenizer),
@@ -158,7 +182,6 @@ def main(args):
 
     if args.do_train:
         trainer.train()
-
         Path(args.output_dir).mkdir(parents=True, exist_ok=True)
         trainer.save_model(args.output_dir)
 
@@ -178,39 +201,14 @@ def main(args):
     if args.do_eval:
         logger.info('evaluation')
 
-        def save_metrics(trainer, model, filename, combined=True, device=device):
-            """
-            customized version of trainer.save_metrics
-            """
-            self = trainer
-            self.place_model_on_device = True
-            self.args.device = device
-            self.model = self.model.to(device)
-            metrics = self.evaluate()
-            if not self.is_world_process_zero():
-                return
-            with open(filename, "w") as f:
-                json.dump(metrics, f, indent=4, sort_keys=True)
-            if combined:
-                if os.path.exists(filename):
-                    with open(filename, "r") as f:
-                        all_metrics = json.load(f)
-                else:
-                    all_metrics = {}
-                all_metrics.update(metrics)
-                with open(filename, "w") as f:
-                    json.dump(all_metrics, f, indent=4, sort_keys=True)
-            return metrics
-
+        if device != "cpu":
+            save_metrics(trainer=trainer,
+                         filename=os.path.join(args.output_dir, "eval_results.json"),
+                         device=device)
         save_metrics(trainer=trainer,
-                     model=model,
-                     filename=os.path.join(args.output_dir, "eval_results.json"))
-        save_metrics(trainer=trainer,
-                     model=model,
                      filename=os.path.join(args.output_dir, "eval_results_cpu.json"),
-                     device="cpu")
-        Path(args.output_dir).mkdir(parents=True, exist_ok=True)
-
+                     device="cpu",
+                     dict_args=dict_training_args)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='training and evaluation bert model')
