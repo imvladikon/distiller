@@ -1,36 +1,34 @@
 import logging
 import os
+import random
 import time
-from typing import Dict, List, Tuple
+import ast
+from collections import Counter
+from pathlib import Path
 
+from typing import Dict, List, Tuple
 import numpy as np
+import pandas as pd
 import torch
+from transformers import AdamW
+from transformers import BertPreTrainedModel, BertModel
+from transformers import BertTokenizer, PreTrainedModel, PreTrainedTokenizer
+
+from transformers import RobertaModel, RobertaForSequenceClassification
+from transformers import ElectraForSequenceClassification
+from transformers.activations import get_activation
+
 from torch import nn
-from torch.nn import MSELoss, CrossEntropyLoss, MultiLabelSoftMarginLoss
+from torch.nn import BCEWithLogitsLoss, MSELoss, CrossEntropyLoss, MultiLabelSoftMarginLoss
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler, TensorDataset
 from torch.utils.data.distributed import DistributedSampler
-from tqdm import tqdm, trange
-from transformers import AdamW, get_linear_schedule_with_warmup
-from transformers import BertPreTrainedModel, BertModel
-from transformers import ElectraForSequenceClassification
-from transformers import PreTrainedModel, PreTrainedTokenizer
-from transformers import RobertaForSequenceClassification
-from transformers.activations import get_activation
-from transformers.modeling_outputs import SequenceClassifierOutput
-
-from utils import set_seed, dict_to_device
-
-try:
-    from torch.utils.tensorboard import SummaryWriter
-except ImportError:
-    from tensorboardX import SummaryWriter
+from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
 
 class Simple1LClassificationHead(nn.Module):
     """Head for sentence-level classification tasks."""
-
     def __init__(self, config):
         super().__init__()
         self.dropout = torch.nn.Dropout(config.hidden_dropout_prob)
@@ -45,7 +43,6 @@ class Simple1LClassificationHead(nn.Module):
 
 class Simple2LClassificationHead(nn.Module):
     """Head for sentence-level classification tasks."""
-
     def __init__(self, config):
         super().__init__()
 
@@ -122,9 +119,11 @@ class ElectraForMultiLabelSequenceClassification(ElectraForSequenceClassificatio
             output = (logits,) + outputs[2:]
         return ((loss,) + output) if loss is not None else output
 
+
     def freeze_bert_encoder(self):
         for param in self.electra.parameters():
             param.requires_grad = False
+
 
     def unfreeze_bert_encoder(self, unfreeze=['10', '11', 'pooler']):
         self.freeze_bert_encoder()
@@ -223,12 +222,12 @@ class BertForMultiLabelSequenceClassification(BertPreTrainedModel):
     ```
     """
 
-    def __init__(self, config, is_multilabel=True, regression=False):
+    def __init__(self, config):
         super().__init__(config)
         self.num_labels = config.num_labels
         self.bert = BertModel(config)
 
-        self.middle_layer_size = config.hidden_size // 10
+        self.middle_layer_size = config.hidden_size//10
 
         self.dropout1 = torch.nn.Dropout(config.hidden_dropout_prob)
         self.fc1 = torch.nn.Linear(config.hidden_size, self.middle_layer_size)
@@ -240,34 +239,8 @@ class BertForMultiLabelSequenceClassification(BertPreTrainedModel):
 
         self.init_weights()
 
-        self.is_multilabel = is_multilabel
-        self.regression = regression
-
-    def forward(self,
-                input_ids=None,
-                attention_mask=None,
-                token_type_ids=None,
-                position_ids=None,
-                head_mask=None,
-                inputs_embeds=None,
-                labels=None,
-                output_attentions=None,
-                output_hidden_states=None,
-                return_dict=None):
-
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-
-        outputs = self.bert(
-            input_ids,
-            attention_mask=attention_mask,
-            token_type_ids=token_type_ids,
-            position_ids=position_ids,
-            head_mask=head_mask,
-            inputs_embeds=inputs_embeds,
-            output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
-        )
+    def forward(self, input_ids, token_type_ids=None, attention_mask=None, labels=None):
+        outputs = self.bert(input_ids, token_type_ids=token_type_ids, attention_mask=attention_mask)
 
         pooled_output = outputs[1]
 
@@ -277,41 +250,26 @@ class BertForMultiLabelSequenceClassification(BertPreTrainedModel):
 
         pooled_output = self.dropout(pooled_output)
 
+
         # pooled_output = outputs[0]
 
         logits = self.classifier(pooled_output)
 
-        loss = None
+        outputs = (logits,)  # + outputs[2:]  # add hidden states and attention if they are here
+
         if labels is not None:
-            # if self.regression:
-            #     loss_fct = MSELoss()
-            #     loss = loss_fct(logits, labels)
-            # else:
-            #     loss_fct = BCEWithLogitsLoss()
-            #     loss = loss_fct(logits, labels)
-            if self.is_multilabel:  # multi label
+            if True:  # multi label
                 # loss_fct = BCEWithLogitsLoss()
                 loss_fct = MultiLabelSoftMarginLoss()
 
                 loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1, self.num_labels))
-            else:  # multi class
+            else:      # multi class
                 loss_fct = CrossEntropyLoss()
-                loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1, ))
-                # loss = loss_fct(logits.view(-1, self.num_labels), labels)
+                loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1,))
+                #loss = loss_fct(logits.view(-1, self.num_labels), labels)
+            outputs = (loss,) + outputs
 
-        if not self.regression:
-            logits = torch.sigmoid(logits)
-
-        if not return_dict:
-            output = (logits,) + outputs[2:]
-            return ((loss,) + output) if loss is not None else output
-
-        return SequenceClassifierOutput(
-            loss=loss,
-            logits=logits,
-            hidden_states=outputs.hidden_states,
-            attentions=outputs.attentions,
-        )
+        return outputs  # (loss), scores, (hidden_states), (attentions)
 
     def freeze_bert_encoder(self):
         for param in self.bert.parameters():
@@ -325,69 +283,289 @@ class BertForMultiLabelSequenceClassification(BertPreTrainedModel):
                 param.requires_grad = True
 
 
-@torch.no_grad()
-def predict(eval_data, model, device, eval_batch_size, is_multilabel=True):
+class DataProcessor(object):
+    """Base class for data converters for sequence classification data sets."""
+
+    def get_train_examples(self, data_dir):
+        """Gets a collection of `InputExample`s for the train set."""
+        raise NotImplementedError()
+
+    def get_dev_examples(self, data_dir):
+        """Gets a collection of `InputExample`s for the dev set."""
+        raise NotImplementedError()
+
+    def get_test_examples(self, data_dir, data_file_name, size=-1):
+        """Gets a collection of `InputExample`s for the dev set."""
+        raise NotImplementedError()
+
+    def get_labels(self):
+        """Gets the list of labels for this data set."""
+        raise NotImplementedError()
+
+
+class InputExample(object):
+    """A single training/test example for simple sequence classification."""
+
+    def __init__(self, document_id, text_a, labels=None):
+        """Constructs a InputExample.
+
+        Args:
+            guid: Unique id for the example.
+            text_a: string. The untokenized text of the first sequence. For single
+            sequence tasks, only this sequence must be specified.
+            Only must be specified for sequence pair tasks.
+            labels: (Optional) [string]. The label of the example. This should be
+            specified for train and dev examples, but not for test examples.
+        """
+        self.document_id = document_id
+        self.guid = hash(document_id)
+        self.text_a = text_a
+        self.labels = labels
+
+
+class InputFeatures(object):
+    """A single set of features of data."""
+
+    def __init__(self, guid, input_ids, input_mask, segment_ids, label_ids):
+        self.guid = guid
+        self.input_ids = input_ids
+        self.input_mask = input_mask
+        self.segment_ids = segment_ids
+        self.label_ids = label_ids
+
+
+class BinaryLabelTextProcessor(DataProcessor):
+    def __init__(self, labels: List = [1]):
+        self.labels = labels
+
+    def get_train_examples(self, args, size=-1):
+        """
+        The train.csv should be in the following format:
+        document_id: a unique number as document id
+        document_text: the text related to this document (remember that the tokens are truncated according to max_seq_length)
+        label: an integer corresponding with the label of the document.
+
+        For example:
+
+            document_id, document_text, label
+            1, this is a good thing, 0
+            2, I really hate this, 1
+            3, This is the shit!, 0
+
+        :param args:
+        :param size:
+        :return:
+        """
+        if 'train_fname' not in args:
+            args['train_fname'] = 'train.csv'
+        logger.info("LOOKING AT {}".format(os.path.join(args.data_dir,  args.train_fname)))
+        data_df = pd.read_csv(os.path.join(args.data_dir,  args.train_fname), dtype=str)
+        if size == -1:
+            return self._create_examples(data_df)
+        else:
+            return self._create_examples(data_df.sample(size))
+
+    def get_dev_examples(self, args, size=-1):
+        """See base class."""
+        if 'eval_fname' in args:
+            input_fname = args["eval_fname"]
+        else:
+            input_fname = args["train_fname"]
+        logger.info(f"Reading {os.path.join(args['data_dir'],  input_fname)}")
+        data_df = pd.read_csv(os.path.join(args['data_dir'], input_fname), dtype=str)
+        if size == -1:
+            return self._create_examples(data_df)
+        else:
+            return self._create_examples(data_df.sample(size))
+
+    def get_test_examples(self, data_dir, data_file_name, size=-1):
+        data_df = pd.read_csv(os.path.join(data_dir, data_file_name), dtype=str)
+        #         data_df['comment_text'] = data_df['comment_text'].apply(cleanHtml)
+        if size == -1:
+            return self._create_examples(data_df)
+        else:
+            return self._create_examples(data_df.sample(size))
+
+    def get_labels(self):
+        """See base class."""
+        return self.labels
+
+    def _create_examples(self, df):
+        """Creates examples for the training and dev sets."""
+        logger.info(f'Read {df.shape[0]} entries')
+        df['document_text'] = df.document_text.str.lower().str.replace('(https?|ftp|file|zoom|aws|mailto)\:\S+', ' ')
+        # if 'subject' in df.columns:
+        #     df['document_text'] = df['subject'] + ' ' + df['document_text']        # if 'subject' in df.columns:
+        #     df['document_text'] = df['subject'] + ' ' + df['document_text']
+
+        if 'label_text' in df.columns:
+            df['label_text'] = df['label_text'].fillna('{}')
+            df['label_text'] = df['label_text'].str.lower().apply(ast.literal_eval).apply(list)
+        else:
+            df['label_text'] = 'no_label'
+            df['label_text'] = df['label_text'].apply(lambda x: [x])
+
+        gdf = df.groupby('document_id').agg({'label_text': sum, 'document_text': 'first', }).reset_index()
+        gdf['label_text'] = gdf['label_text'].apply(set)
+        c = Counter()
+        _ = [c.update(el) for el in df["label_text"] for x in el]
+        logger.info(f'Labels {c}\n')
+        logger.info(f'Processing {gdf.shape[0]} entries')
+
+        res = gdf.apply(
+                        lambda x: InputExample(document_id=str(x['document_id']),
+                                               text_a=x['document_text'],
+                                               labels=list(x['label_text'])),
+                        axis=1).tolist()
+        return res
+
+
+def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer, cut_long=True):
+    """Loads a data file into a list of `InputBatch`s."""
+
+    label_map = {label.lower(): i for i, label in enumerate(label_list)}
+
+    features = []
+    for ex_index, example in enumerate(examples):
+        try:
+            if len(example.text_a) > 50000:
+                logger.warning(f'Skipping email that is longer than 50k characters')
+                raise
+            tokens_a = tokenizer.tokenize(example.text_a)
+        except:
+            logger.warning(f'Failed to tokenize email_id= {example.document_id}')
+            tokens_a = [tokenizer.unk_token]
+
+        unk_count = tokens_a.count([tokenizer.unk_token])
+        if unk_count > 10:
+            logger.warning(f'Found {unk_count} {tokenizer.unk_token} in  [{example.document_id}]: \"{example.text_a[:500]}\"')
+
+        # The convention in BERT is:
+        # (a) For sequence pairs:
+        #  tokens:   [CLS] is this jack ##son ##ville ? [SEP] no it is not . [SEP]
+        #  type_ids: 0   0  0    0    0     0       0 0    1  1  1  1   1 1
+        # (b) For single sequences:
+        #  tokens:   [CLS] the dog is hairy . [SEP]
+        #  type_ids: 0   0   0   0  0     0 0
+        #
+        # Where "type_ids" are used to indicate whether this is the first
+        # sequence or the second sequence. The embedding vectors for `type=0` and
+        # `type=1` were learned during pre-training and are added to the wordpiece
+        # embedding vector (and position vector). This is not *strictly* necessary
+        # since the [SEP] token unambigiously separates the sequences, but it makes
+        # it easier for the model to learn the concept of sequences.
+        #
+        # For classification tasks, the first vector (corresponding to [CLS]) is
+        # used as as the "sentence vector". Note that this only makes sense because
+        # the entire model is fine-tuned.
+
+        OVERLAP = 30  # Tokens
+        while len(tokens_a) > 0:
+            cut_position = max_seq_length - 2
+            tokens = tokens_a[:cut_position]
+            if not cut_long:
+                if cut_position > len(tokens_a):
+                    cut_position -= OVERLAP
+                if len(tokens_a) < max_seq_length + 2*OVERLAP:
+                    cut_position -= OVERLAP
+
+            tokens_a = tokens_a[cut_position:]
+
+            # Account for [CLS] and [SEP] with "-2"
+            tokens = [tokenizer.cls_token] + tokens + [tokenizer.sep_token]
+            segment_ids = [0] * len(tokens)
+
+            input_ids = tokenizer.convert_tokens_to_ids(tokens)
+
+            # The mask has 1 for real tokens and 0 for padding tokens. Only real
+            # tokens are attended to.
+            input_mask = [1] * len(input_ids)
+
+            # Zero-pad up to the sequence length.
+            padding = [0] * (max_seq_length - len(input_ids))
+            input_ids += padding
+            input_mask += padding
+            segment_ids += padding
+
+            assert len(input_ids) == max_seq_length
+            assert len(input_mask) == max_seq_length
+            assert len(segment_ids) == max_seq_length
+
+            if True:  # multi label
+                labels_ids = [int(l in example.labels) for l in label_map]    # [1.0 if example.labels==lbl else 0.0 for lbl in label_map]  # this should be used for multi-label
+            else:      # multi class
+                labels_ids = label_map[example.labels[0].lower()] if example.labels[0].lower() in label_map else 0  # this should be used for multi-class
+
+            features.append(
+                InputFeatures(guid=example.guid,
+                              input_ids=input_ids,
+                              input_mask=input_mask,
+                              segment_ids=segment_ids,
+                              label_ids=labels_ids))
+
+            if cut_long:
+                break
+
+    return features
+
+
+def predict(args, eval_features, model, device):
     t_start = time.time()
     logger.info("***** Running evaluation *****")
-    logger.info("  Num examples = %d", len(eval_data))
-    logger.info("  Batch size = %d", eval_batch_size)
+    logger.info("  Num examples = %d", len(eval_features))
+    logger.info("  Batch size = %d", args['eval_batch_size'])
+    all_input_ids = torch.tensor([f.input_ids for f in eval_features], dtype=torch.long)
+    all_input_mask = torch.tensor([f.input_mask for f in eval_features], dtype=torch.long)
+    all_segment_ids = torch.tensor([f.segment_ids for f in eval_features], dtype=torch.long)
+    all_guids = [f.guid for f in eval_features]
+    if True:  # multi label
+        all_label_ids = torch.tensor([f.label_ids for f in eval_features], dtype=torch.float)
+    else:      # multi class
+        all_label_ids = torch.tensor([f.label_ids for f in eval_features], dtype=torch.long)
+    eval_data = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids)
 
+    # Run prediction for full data
     eval_sampler = SequentialSampler(eval_data)
-    eval_dataloader = DataLoader(eval_data, sampler=eval_sampler, batch_size=eval_batch_size)
+    eval_dataloader = DataLoader(eval_data, sampler=eval_sampler, batch_size=args['eval_batch_size'])
 
     all_logits = None
     all_labels = None
-    all_guids = None
 
     nb_eval_steps, nb_eval_examples = 0, 0
     model.eval()
-    for batch in tqdm(eval_dataloader):
-        labels = batch["labels"].detach().cpu().numpy()
+    for input_ids, input_mask, segment_ids, label_ids in tqdm(eval_dataloader):
+        input_ids = input_ids.to(device)
+        input_mask = input_mask.to(device)
+        segment_ids = segment_ids.to(device)
+        label_ids = label_ids.to(device)
 
-        if all_labels is None:
-            all_labels = labels
-        else:
-            all_labels = np.concatenate((all_labels, labels), axis=0)
-
-        guids = batch["guid"].detach().cpu().numpy()
-
-        if all_guids is None:
-            all_guids = guids
-        else:
-            all_guids = np.concatenate((all_guids, guids), axis=0)
-
-        batch = dict_to_device(batch, device,
-                               filter_props=["input_ids",
-                                             "token_type_ids",
-                                             "attention_mask",
-                                             "labels"])
-
-        output = model(**batch)
-        if isinstance(output, tuple):
-            logits = output[1]
-        else:
-            logits = output.logits
+        with torch.no_grad():
+            logits = model(input_ids, segment_ids, input_mask)[0]
 
         if all_logits is None:
             all_logits = logits.detach().cpu().numpy()
         else:
             all_logits = np.concatenate((all_logits, logits.detach().cpu().numpy()), axis=0)
 
-        nb_eval_examples += batch["input_ids"].size(0)
+        if all_labels is None:
+            all_labels = label_ids.detach().cpu().numpy()
+        else:
+            all_labels = np.concatenate((all_labels, label_ids.detach().cpu().numpy()), axis=0)
+
+        nb_eval_examples += input_ids.size(0)
         nb_eval_steps += 1
 
     t_dur = time.time() - t_start
     logger.info(f"Finished evaluation in {t_dur:.1f} sec")
-    logger.info(f"Throughput {len(eval_data) / t_dur}/sec")
+    logger.info(f"Throughput {len(eval_features)/t_dur}/sec")
 
     return all_logits, all_labels, all_guids
 
 
 def warmup_linear(x, warmup=0.002):
     if x < warmup:
-        return x / warmup
+        return x/warmup
     return 1.0 - x
-
 
 def train(args, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedTokenizer) -> Tuple[int, float]:
     """ Train the model """
@@ -398,8 +576,8 @@ def train(args, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedToke
 
     def collate(examples: List[torch.Tensor]):
         if tokenizer._pad_token is None:
-            return nn.utils.rnn.pad_sequence(examples, batch_first=True)
-        return nn.utils.rnn.pad_sequence(examples, batch_first=True, padding_value=tokenizer.pad_token_id)
+            return pad_sequence(examples, batch_first=True)
+        return pad_sequence(examples, batch_first=True, padding_value=tokenizer.pad_token_id)
 
     train_sampler = RandomSampler(train_dataset) if args.local_rank == -1 else DistributedSampler(train_dataset)
     train_dataloader = DataLoader(
@@ -428,9 +606,9 @@ def train(args, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedToke
 
     # Check if saved optimizer or scheduler states exist
     if (
-            args.model_name_or_path
-            and os.path.isfile(os.path.join(args.model_name_or_path, "optimizer.pt"))
-            and os.path.isfile(os.path.join(args.model_name_or_path, "scheduler.pt"))
+        args.model_name_or_path
+        and os.path.isfile(os.path.join(args.model_name_or_path, "optimizer.pt"))
+        and os.path.isfile(os.path.join(args.model_name_or_path, "scheduler.pt"))
     ):
         # Load in optimizer and scheduler states
         optimizer.load_state_dict(torch.load(os.path.join(args.model_name_or_path, "optimizer.pt")))
@@ -453,6 +631,7 @@ def train(args, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedToke
             model, device_ids=[args.local_rank], output_device=args.local_rank, find_unused_parameters=True
         )
 
+    # Train!
     logger.info("***** Running training *****")
     logger.info("  Num examples = %d", len(train_dataset))
     logger.info("  Num Epochs = %d", args.num_train_epochs)
@@ -494,7 +673,7 @@ def train(args, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedToke
     train_iterator = trange(
         epochs_trained, int(args.num_train_epochs), desc="Epoch", disable=args.local_rank not in [-1, 0]
     )
-    set_seed(args)
+    set_seed(args)  # Added here for reproducibility
     for _ in train_iterator:
         epoch_iterator = tqdm(train_dataloader, desc="Iteration", disable=args.local_rank not in [-1, 0])
         for step, batch in enumerate(epoch_iterator):
@@ -536,7 +715,7 @@ def train(args, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedToke
                 if args.local_rank in [-1, 0] and args.logging_steps > 0 and global_step % args.logging_steps == 0:
                     # Log metrics
                     if (
-                            args.local_rank == -1 and args.evaluate_during_training
+                        args.local_rank == -1 and args.evaluate_during_training
                     ):  # Only evaluate when single GPU otherwise metrics may not average well
                         results = evaluate(args, model, tokenizer)
                         for key, value in results.items():
@@ -559,8 +738,7 @@ def train(args, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedToke
                     torch.save(args, os.path.join(output_dir, "training_args.bin"))
                     logger.info("Saving model checkpoint to %s", output_dir)
 
-                    # TODO: add transformers trainer
-                    # _rotate_checkpoints(args, checkpoint_prefix)
+                    _rotate_checkpoints(args, checkpoint_prefix)
 
                     torch.save(optimizer.state_dict(), os.path.join(output_dir, "optimizer.pt"))
                     torch.save(scheduler.state_dict(), os.path.join(output_dir, "scheduler.pt"))
@@ -589,13 +767,12 @@ def evaluate(args, model: PreTrainedModel, tokenizer: PreTrainedTokenizer, prefi
         os.makedirs(eval_output_dir, exist_ok=True)
 
     args.eval_batch_size = args.per_gpu_eval_batch_size * max(1, args.n_gpu)
-
     # Note that DistributedSampler samples randomly
 
     def collate(examples: List[torch.Tensor]):
         if tokenizer._pad_token is None:
-            return nn.utils.rnn.pad_sequence(examples, batch_first=True)
-        return nn.utils.rnn.pad_sequence(examples, batch_first=True, padding_value=tokenizer.pad_token_id)
+            return pad_sequence(examples, batch_first=True)
+        return pad_sequence(examples, batch_first=True, padding_value=tokenizer.pad_token_id)
 
     eval_sampler = SequentialSampler(eval_dataset)
     eval_dataloader = DataLoader(
@@ -639,19 +816,16 @@ def evaluate(args, model: PreTrainedModel, tokenizer: PreTrainedTokenizer, prefi
 
     return result
 
-
-def train(args, train_data, model, device, is_multilabel=True):
-    # TODO: add Trainer from transformers
-
+def train(args, train_features, model, device):
     num_epocs = args['num_train_epochs']
 
     num_train_steps = int(
-        len(train_data) / args['train_batch_size'] / args['gradient_accumulation_steps'] * args['num_train_epochs'])
+        len(train_features) / args['train_batch_size'] / args['gradient_accumulation_steps'] * args['num_train_epochs'])
 
     t_total = num_train_steps
 
     logger.info("***** Running training *****")
-    logger.info("  Num examples = %d", len(train_data))
+    logger.info("  Num examples = %d", len(train_features))
     logger.info("  Batch size = %d", args.train_batch_size)
     logger.info("  Num steps = %d", num_train_steps)
 
@@ -669,10 +843,18 @@ def train(args, train_data, model, device, is_multilabel=True):
         model = torch.nn.DataParallel(model)
 
     if args.warmup_linear:
-        scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=args.warmup_proportion,
-                                                    num_training_steps=t_total)
+        scheduler = WarmupLinearSchedule(optimizer, warmup_steps=args.warmup_proportion, t_total=t_total)
     else:
         scheduler = None
+
+    all_input_ids = torch.tensor([f.input_ids for f in train_features], dtype=torch.long)
+    all_input_mask = torch.tensor([f.input_mask for f in train_features], dtype=torch.long)
+    all_segment_ids = torch.tensor([f.segment_ids for f in train_features], dtype=torch.long)
+    if True:  # multi label
+        all_label_ids = torch.tensor([f.label_ids for f in train_features], dtype=torch.float)
+    else:      # multi class
+        all_label_ids = torch.tensor([f.label_ids for f in train_features], dtype=torch.long)
+    train_data = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids)
 
     train_sampler = RandomSampler(train_data) if args.local_rank == -1 else DistributedSampler(train_data)
     train_dataloader = DataLoader(train_data, sampler=train_sampler, batch_size=args.train_batch_size)
@@ -680,38 +862,28 @@ def train(args, train_data, model, device, is_multilabel=True):
     global_step = 0
     model.train()
     for i_ in range(int(num_epocs)):
-        logger.info(f'{"*" * 20}\nEpoch {i_ + 1}/{num_epocs}')
+        logger.info(f'{"*"*20}\nEpoch {i_+1}/{num_epocs}')
         tr_loss = 0
         nb_tr_examples, nb_tr_steps = 0, 0
         for step, batch in enumerate(tqdm(train_dataloader, desc="Iteration")):
-            """ batch = {
-            'input_ids':torch.long,'token_type_ids':torch.long,'attention_mask':torch.long,'labels': dtype=torch.float if is_multilabel else torch.long
-            }
-            """
-            batch = dict_to_device(batch, device, filter_props=["input_ids",
-                                                                "token_type_ids",
-                                                                "attention_mask",
-                                                                "labels"])
 
-            output = model(**batch)
-            if isinstance(output, tuple):
-                loss = output[0]
-            else:
-                loss = output.loss
+            batch = tuple(t.to(device) for t in batch)
+            input_ids, input_mask, segment_ids, label_ids = batch
+            loss = model(input_ids, segment_ids, input_mask, label_ids)
+            loss = loss[0]
             loss.backward()
 
             if args.n_gpu > 1:
-                # mean() to average on multi-gpu parallel training
-                loss = loss.mean()
+                loss = loss.mean()  # mean() to average on multi-gpu parallel training
 
             tr_loss += loss.item()
-            nb_tr_examples += batch["input_ids"].size(0)
+            nb_tr_examples += input_ids.size(0)
             nb_tr_steps += 1
             if (step + 1) % args['gradient_accumulation_steps'] == 0:
                 if scheduler:
-                    scheduler.step()
+                    scheduler.batch_step()
                 # modify learning rate with special warm up BERT uses
-                lr_this_step = args['learning_rate'] * warmup_linear(global_step / t_total, args['warmup_proportion'])
+                lr_this_step = args['learning_rate'] * warmup_linear(global_step/t_total, args['warmup_proportion'])
                 for param_group in optimizer.param_groups:
                     param_group['lr'] = lr_this_step
                 optimizer.step()
@@ -721,8 +893,17 @@ def train(args, train_data, model, device, is_multilabel=True):
                 global_step += 1
 
         logger.info('Loss after epoc {}'.format(tr_loss / nb_tr_steps))
-        logger.info('Eval after epoc {}'.format(i_ + 1))
+        logger.info('Eval after epoc {}'.format(i_+1))
 
         # predict(args, train_features, model, device)
 
     return global_step, tr_loss / global_step
+
+
+def set_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True

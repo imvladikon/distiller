@@ -9,7 +9,7 @@ export ROOT_DIR=$(pwd)
 #export WANDB_TAGS=L12,H768,A12,teacher,bert-base-uncased,bert+cnn
 mkdir -p $ROOT_DIR/models/gong_hard_labels
 cd $ROOT_DIR/models/gong_hard_labels &&
-  python3 $ROOT_DIR/bert_train_model_multilabels.py \
+  python3 $ROOT_DIR/train_eval_multilabel_model.py \
     --model_name=bert-base-uncased \
     --dataset_config=gong_hard_labels \
     --max_seq_length=512 \

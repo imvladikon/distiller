@@ -34,10 +34,8 @@ AVAILABLE_CLASS_MODELS = {
 }
 
 
-def save_metrics(trainer,
-                 filename,
+def eval_metrics(trainer,
                  device=device,
-                 combined=True,
                  dict_args=None):
     """
     customized version of trainer.save_metrics
@@ -48,6 +46,13 @@ def save_metrics(trainer,
         dict_args["no_cuda"] = True
         trainer.args = TrainingArguments(**dict_args)
     metrics = trainer.evaluate()
+    return metrics
+
+
+def save_metrics(trainer,
+                 filename,
+                 metrics,
+                 combined=True):
     if not trainer.is_world_process_zero():
         return
     with open(filename, "w") as f:
@@ -61,7 +66,6 @@ def save_metrics(trainer,
         all_metrics.update(metrics)
         with open(filename, "w") as f:
             json.dump(all_metrics, f, indent=4, sort_keys=True)
-    return metrics
 
 
 def main(args):
@@ -200,15 +204,16 @@ def main(args):
 
     if args.do_eval:
         logger.info('evaluation')
-
-        if device != "cpu":
-            save_metrics(trainer=trainer,
-                         filename=os.path.join(args.output_dir, "eval_results.json"),
-                         device=device)
+        metric_results = eval_metrics(trainer=trainer,
+                                      device="cpu",
+                                      dict_args=dict_training_args)
+        key_metric = ["eval_runtime", "eval_samples_per_second", "eval_steps_per_second"]
+        metric_results = {k if k not in key_metric else f"{k}_cpu": v
+                          for k, v in metric_results.items()}
         save_metrics(trainer=trainer,
-                     filename=os.path.join(args.output_dir, "eval_results_cpu.json"),
-                     device="cpu",
-                     dict_args=dict_training_args)
+                     filename=os.path.join(args.output_dir, "eval_results.json"),
+                     metrics=metric_results)
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='training and evaluation bert model')

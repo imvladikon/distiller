@@ -5,7 +5,9 @@ from torch.nn import MSELoss, BCEWithLogitsLoss
 from transformers import BertPreTrainedModel, BertModel
 from transformers.modeling_outputs import SequenceClassifierOutput
 from transformers.models.bert.configuration_bert import BertConfig
+import logging
 
+logger = logging.getLogger(__name__)
 
 class HFBertForMultiLabelSequenceClassification(BertPreTrainedModel):
     def __init__(self, config: BertConfig, regression: bool = False, *args, **kwargs) -> None:
@@ -238,7 +240,7 @@ class BertForMultiLabelSequenceClassification(BertPreTrainedModel):
 
         for name, param in self.bert.named_parameters():
             if any(t in name for t in unfreeze):
-                # logger.info(f'Unfreezing {name}')
+                logger.info(f'Unfreezing {name}')
                 param.requires_grad = True
 
 

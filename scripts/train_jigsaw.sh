@@ -3,7 +3,7 @@ export ROOT_DIR=$(pwd)
 #export WANDB_DISABLED=true
 mkdir -p $ROOT_DIR/models/jigsaw
 cd $ROOT_DIR/models/jigsaw &&
-  python3 $ROOT_DIR/bert_train_model_multilabels.py \
+  python3 $ROOT_DIR/train_eval_multilabel_model.py \
     --model_name=bert-base-uncased \
     --dataset_config=jigsaw \
     --max_seq_length=512 \
