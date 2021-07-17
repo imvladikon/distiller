@@ -75,6 +75,14 @@ def main(args):
                                                 num_warmup_steps=0,  # Default value in run_glue.py
                                                 num_training_steps=total_steps)
 
+    if args.use_wandb:
+        wandb_env_vars = ["WANDB_NOTES", "WANDB_NAME", "WANDB_ENTITY", "WANDB_PROJECT", "WANDB_TAGS"]
+        for v in wandb_env_vars:
+            if v.lower() in args and args[v.lower()]:
+                os.environ[v] = args[v.lower()]
+    else:
+        os.environ["WANDB_DISABLED"] = "true"
+
     if args.do_train:
         logger.info('Training')
 
@@ -220,11 +228,6 @@ if __name__ == '__main__':
     parser.add_argument("--wandb_entity", default='', type=str, required=False)
     parser.add_argument("--wandb_group", default='', type=str, required=False)
     parser.add_argument("--wandb_name", default='', type=str, required=False)
-    # WANDB_NOTES
-    # WANDB_NAME
-    # WANDB_ENTITY
-    # WANDB_PROJECT
-    # WANDB_TAGS
     parser.add_argument("--per_gpu_train_batch_size", default=8, type=int,
                         help="Batch size per GPU/CPU for training.")
     parser.add_argument("--per_gpu_eval_batch_size", default=8, type=int,
