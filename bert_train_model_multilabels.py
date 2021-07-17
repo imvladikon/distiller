@@ -178,7 +178,7 @@ def main(args):
     if args.do_eval:
         logger.info('evaluation')
 
-        def save_metrics(trainer, filename, combined=True):
+        def save_metrics(trainer, model, filename, combined=True):
             """
             customized version of trainer.save_metrics
             """
@@ -200,13 +200,15 @@ def main(args):
             return metrics
 
         @with_device(device="cpu")
-        def save_metrics_cpu(trainer, filename, combined=True):
-            return save_metrics(trainer, filename, combined)
+        def save_metrics_cpu(trainer, model, filename, combined=True):
+            return save_metrics(trainer, model, filename, combined)
 
         save_metrics(trainer=trainer,
+                     model=model,
                      filename=os.path.join(args.output_dir, "eval_results.json"))
         save_metrics_cpu(trainer=trainer,
-                     filename=os.path.join(args.output_dir, "eval_results_cpu.json"))
+                         model=model,
+                         filename=os.path.join(args.output_dir, "eval_results_cpu.json"))
         Path(args.output_dir).mkdir(parents=True, exist_ok=True)
 
 
