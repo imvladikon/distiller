@@ -12,7 +12,8 @@ class GongSoftDatasetConfig(BaseDatasetConfig):
     train_filename = str(ROOT_DIR / "data" / "0" / "train_weak_label_bin_email_id.csv")
 
     """
-    test file doesn't have a probabilites, then we skip it
+    test file doesn't have the probabilites, 
+    then we skip it and will use split from train
     """
     # val_filename = str(ROOT_DIR / "data" / "0" / "test.csv")
     # test_filename = str(ROOT_DIR / "data" / "0" / "test.csv")
