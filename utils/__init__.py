@@ -98,28 +98,28 @@ def dict_to_device(batch, device, filter_props=None):
         return {k: v.to(device) for k, v in batch.items() if k in filter_props}
 
 
-def with_cpu(fn):
-    @wraps(fn)
-    def wrapped_fn(*args, **kwargs):
-        cur_devices = {
-            o: v.device
-            for o, v in kwargs.items()
-            if hasattr(v, "device")
-        }
-        result = None
-        try:
-            for o, v in kwargs.items():
-                if not hasattr(v, "device"): continue
-                v = v.to("cpu")
-            result = fn(*args, **kwargs)
-        finally:
-            for o, v in kwargs.items():
-                if not hasattr(v, "device"): continue
-                v = v.to(cur_devices[o])
-        return result
-    return wrapped_fn
-
-
+def with_device(device="cpu"):
+    def decorator(fn):
+        @wraps(fn)
+        def wrapped_fn(*args, **kwargs):
+            cur_devices = {
+                o: v.device
+                for o, v in kwargs.items()
+                if hasattr(v, "device")
+            }
+            result = None
+            try:
+                for o, v in kwargs.items():
+                    if not hasattr(v, "device"): continue
+                    v = v.to(device)
+                result = fn(*args, **kwargs)
+            finally:
+                for o, v in kwargs.items():
+                    if not hasattr(v, "device"): continue
+                    v = v.to(cur_devices[o])
+            return result
+        return wrapped_fn
+    return decorator
 
 if __name__ == '__main__':
     I = [1, 1, 1, 1, 2, 2.1, 2.2, 2.7, 3, 3.6, 7, 7.9, 12]

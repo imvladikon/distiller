@@ -7,7 +7,7 @@ from config.datasets import DataFactory, DATASETS_CONFIG_INFO
 from const import *
 from metrics.multiclasseval import Multiclasseval
 from metrics.utils import compute_multilabel_metrics
-from utils import set_seed, dotdict, with_cpu
+from utils import set_seed, dotdict, with_device
 import logging
 import torch
 from functools import partial
@@ -177,24 +177,13 @@ def main(args):
 
     if args.do_eval:
         logger.info('evaluation')
-        metrics = trainer.evaluate()
 
-        @with_cpu
-        def eval_model_cpu(trainer, model):
-            return trainer.evaluate()
-
-        metrics_cpu = eval_model_cpu(trainer, model)
-        metrics_cpu = {
-            f"{k}_cpu": metrics_cpu[k]
-            for k in ["eval_runtime", "eval_samples_per_second", "eval_steps_per_second"]
-        }
-        metrics = {**metrics, **metrics_cpu}
-
-        def save_metrics(trainer, metrics, filename, combined=True):
+        def save_metrics(trainer, filename, combined=True):
             """
             customized version of trainer.save_metrics
             """
             self = trainer
+            metrics = self.evaluate()
             if not self.is_world_process_zero():
                 return
             with open(filename, "w") as f:
@@ -208,12 +197,18 @@ def main(args):
                 all_metrics.update(metrics)
                 with open(filename, "w") as f:
                     json.dump(all_metrics, f, indent=4, sort_keys=True)
+            return metrics
 
-        Path(args.output_dir).mkdir(parents=True, exist_ok=True)
+        @with_device(device="cpu")
+        def save_metrics_cpu(trainer, filename, combined=True):
+            return save_metrics(trainer, filename, combined)
 
         save_metrics(trainer=trainer,
-                     metrics=metrics,
                      filename=os.path.join(args.output_dir, "eval_results.json"))
+        save_metrics(trainer=trainer,
+                     filename=os.path.join(args.output_dir, "eval_results_cpu.json"))
+        Path(args.output_dir).mkdir(parents=True, exist_ok=True)
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='training and evaluation bert model')
