@@ -106,15 +106,17 @@ def with_cpu(fn):
             for o, v in kwargs.items()
             if hasattr(v, "device")
         }
+        result = None
         try:
             for o, v in kwargs.items():
                 if not hasattr(v, "device"): continue
                 v = v.to("cpu")
-            fn(*args, **kwargs)
+            result = fn(*args, **kwargs)
         finally:
             for o, v in kwargs.items():
                 if not hasattr(v, "device"): continue
                 v = v.to(cur_devices[o])
+        return result
     return wrapped_fn
 
 
