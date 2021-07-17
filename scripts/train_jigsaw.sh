@@ -1,5 +1,5 @@
 cd ..
-export ROOT_DIR=`pwd`
+export ROOT_DIR=$(pwd)
 #export WANDB_DISABLED=true
 mkdir -p $ROOT_DIR/models/jigsaw
 cd $ROOT_DIR/models/jigsaw &&
@@ -19,4 +19,5 @@ cd $ROOT_DIR/models/jigsaw &&
     --learning_rate=3e-5 \
     --num_train_epochs=5 \
     --seed=42 \
+    --calculate_per_class \
     --threshold=0.5

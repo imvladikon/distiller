@@ -1,5 +1,5 @@
 cd ..
-export ROOT_DIR=`pwd`
+export ROOT_DIR=$(pwd)
 #export WANDB_DISABLED=true
 mkdir -p $ROOT_DIR/models/gong_soft_labels
 cd $ROOT_DIR/models/gong_soft_labels &&
@@ -19,5 +19,6 @@ cd $ROOT_DIR/models/gong_soft_labels &&
     --learning_rate=3e-5 \
     --num_train_epochs=5 \
     --seed=42 \
+    --calculate_per_class \
     --threshold=0.5
 #   it's metric evaluation threshold. threshold for soft labels is in dataset config

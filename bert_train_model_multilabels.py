@@ -177,7 +177,7 @@ def main(args):
         metrics = trainer.evaluate()
 
         Path(args.output_dir).mkdir(parents=True, exist_ok=True)
-        trainer.save_metrics(args.output_dir, metrics=metrics)
+        trainer.save_metrics("eval", metrics=metrics)
 
 
 if __name__ == '__main__':

@@ -1,6 +1,12 @@
 cd ..
-export ROOT_DIR=`pwd`
+export ROOT_DIR=$(pwd)
 #export WANDB_DISABLED=true
+#export WANDB_API_TOKEN=
+#export WANDB_NOTES=bert-cnn-teacher-hard-labels
+#export WANDB_NAME=bert-cnn-teacher-hard-labels
+#export WANDB_ENTITY=
+#export WANDB_PROJECT=
+#export WANDB_TAGS=L12,H768,A12,teacher,bert-base-uncased,bert+cnn
 mkdir -p $ROOT_DIR/models/gong_hard_labels
 cd $ROOT_DIR/models/gong_hard_labels &&
   python3 $ROOT_DIR/bert_train_model_multilabels.py \
@@ -20,4 +26,5 @@ cd $ROOT_DIR/models/gong_hard_labels &&
     --num_train_epochs=5 \
     --seed=42 \
     --threshold=0.5 \
+    --calculate_per_class \
     --model_class=BertForClassificationCNN
