@@ -191,7 +191,11 @@ def main(args):
 
     if args.do_eval:
         logger.info('evaluation')
-        trainer.evaluate()
+        metric_results = trainer.evaluate()
+        save_metrics(trainer=trainer,
+                     filename=os.path.join(args.output_dir, "eval_results.json"),
+                     metrics=metric_results)
+
         training_summary = TrainingSummary.from_trainer(
             trainer,
             language="en",
@@ -211,7 +215,7 @@ def main(args):
         metric_results = {k if k not in key_metric else f"{k}_cpu": v
                           for k, v in metric_results.items()}
         save_metrics(trainer=trainer,
-                     filename=os.path.join(args.output_dir, "eval_results.json"),
+                     filename=os.path.join(args.output_dir, "eval_results_cpu.json"),
                      metrics=metric_results)
 
 

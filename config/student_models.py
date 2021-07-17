@@ -1,5 +1,5 @@
 import numpy as np
-from sklearn.decomposition import PCA
+from sklearn.decomposition import PCA, TruncatedSVD
 from transformers import BertConfig, BertModel, BertPreTrainedModel
 
 
@@ -17,9 +17,16 @@ def create_student_model(hidden_size,
     return model
 
 
-def reduce_word_embeddings_pca(model: BertPreTrainedModel,
+AVAILABLE_REDUCE_METHODS = {
+    "PCA": PCA,
+    "TruncatedSVD": TruncatedSVD
+}
+
+
+def reduce_word_embeddings(model: BertPreTrainedModel,
                                tokenizer: "AutoTokenizer",
-                               hidden_size: int):
+                               hidden_size: int,
+                               method: str = "PCA"):
     """
     get word embedding matrix from teacher
     Args:
@@ -36,15 +43,10 @@ def reduce_word_embeddings_pca(model: BertPreTrainedModel,
     if hasattr(model, "embeddings"):
         word_embedding_matrix = model.embeddings.word_embeddings.weight.cpu().detach().numpy()
     else:
-        # logger.info("Base model not supported. Initializing word embedding with random matrix")
         word_embedding_matrix = np.random.uniform(size=(len(tokenizer.get_vocab()), hidden_size))
-    # logger.info(word_embedding_matrix.shape)
-    # embedding factorization to reduce embedding dimension
     if word_embedding_matrix.shape[1] > hidden_size:
-        pca = PCA(n_components=hidden_size)
-        word_embedding_matrix = pca.fit_transform(word_embedding_matrix)
-        # logger.info(" Word embedding matrix compressed to {}".format(word_embedding_matrix.shape))
-
+        reducer = AVAILABLE_REDUCE_METHODS.get(method, PCA)(n_components=hidden_size)
+        word_embedding_matrix = reducer.fit_transform(word_embedding_matrix)
     return word_embedding_matrix
 
 
@@ -54,4 +56,4 @@ if __name__ == '__main__':
 
     teacher_model = BertForMultiLabelSequenceClassification.from_pretrained("bert-base-uncased")
     tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
-    word_embedding_matrix = reduce_word_embeddings_pca(teacher_model, tokenizer, hidden_size=256)
+    word_embedding_matrix = reduce_word_embeddings(teacher_model, tokenizer, hidden_size=256, method="PCA")
