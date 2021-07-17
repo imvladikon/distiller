@@ -7,7 +7,7 @@ from config.datasets import DataFactory, DATASETS_CONFIG_INFO
 from const import *
 from metrics.multiclasseval import Multiclasseval
 from metrics.utils import compute_multilabel_metrics
-from utils import set_seed, dotdict, with_device
+from utils import set_seed, dotdict
 import logging
 import torch
 from functools import partial
@@ -178,11 +178,14 @@ def main(args):
     if args.do_eval:
         logger.info('evaluation')
 
-        def save_metrics(trainer, model, filename, combined=True):
+        def save_metrics(trainer, model, filename, combined=True, device=device):
             """
             customized version of trainer.save_metrics
             """
             self = trainer
+            self.place_model_on_device = True
+            self.args.device = device
+            self.model = self.model.to(device)
             metrics = self.evaluate()
             if not self.is_world_process_zero():
                 return
@@ -199,16 +202,13 @@ def main(args):
                     json.dump(all_metrics, f, indent=4, sort_keys=True)
             return metrics
 
-        @with_device(device="cpu")
-        def save_metrics_cpu(trainer, model, filename, combined=True):
-            return save_metrics(trainer, model, filename, combined)
-
         save_metrics(trainer=trainer,
                      model=model,
                      filename=os.path.join(args.output_dir, "eval_results.json"))
-        save_metrics_cpu(trainer=trainer,
-                         model=model,
-                         filename=os.path.join(args.output_dir, "eval_results_cpu.json"))
+        save_metrics(trainer=trainer,
+                     model=model,
+                     filename=os.path.join(args.output_dir, "eval_results_cpu.json"),
+                     device="cpu")
         Path(args.output_dir).mkdir(parents=True, exist_ok=True)
 
 
