@@ -19,13 +19,18 @@ from transformers import (AutoTokenizer,
                           AdamW,
                           get_linear_schedule_with_warmup,
                           TrainingArguments,
-                          PrinterCallback)
+                          PrinterCallback, BertPreTrainedModel)
 
 logging.basicConfig(format='%(asctime)s\t%(levelname)s\t%(name)s\t%(message)s',
                     datefmt='%Y-%m-%d %H:%M:%S',
                     level=logging.INFO)
 
 logger = logging.getLogger(__name__)
+
+AVAILABLE_CLASS_MODELS = {
+    "BertForClassificationCNN": BertForClassificationCNN,
+    "BertForMultiLabelSequenceClassification": BertForMultiLabelSequenceClassification
+}
 
 
 def main(args):
@@ -48,13 +53,18 @@ def main(args):
         logger.info(f"Setting #threads to {args['n_threads']}")
 
     logger.info(f"device: {device} \t #number of gpu: {args.n_gpu}")
-    logger.info(f'Using model: {str(args.model_name)}')
 
-    model = BertForMultiLabelSequenceClassification.from_pretrained(args.model_name,
-                                                                    num_labels=len(label_list)).to(device)
+    model_class: BertPreTrainedModel = AVAILABLE_CLASS_MODELS.get(args.model_class,
+                                                                  BertForMultiLabelSequenceClassification)
+    logger.info(f'Using model class: {str(model_class)}')
+
+    model = model_class.from_pretrained(args.model_name,
+                                        num_labels=len(label_list)).to(device)
     # model.resize_token_embeddings(len(tokenizer))
     model.config.label2id = label2id
     model.config.id2label = id2label
+
+    logger.info(f'Using model: {str(args.model_name)}')
 
     train_features = ds["train"]
     eval_features = ds["test"]
@@ -181,6 +191,12 @@ if __name__ == '__main__':
                         required=True,
                         choices=list(DATASETS_CONFIG_INFO.keys()),
                         help="need to choose a dataset config")
+    parser.add_argument("--model_class",
+                        default="BertForMultiLabelSequenceClassification",
+                        type=str,
+                        required=False,
+                        choices=list(AVAILABLE_CLASS_MODELS.keys()),
+                        help="need to choose a model class. by default it's BertForMultiLabelSequenceClassification")
     parser.add_argument("--max_seq_length",
                         default=512,
                         type=int,
