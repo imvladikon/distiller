@@ -110,7 +110,7 @@ def main(args):
         model.unfreeze_bert_encoder(['pooler', '11', '10', '9', '8', '7', '6', '5'])  # , '9', '8', '7', '6'])
 
     training_args = TrainingArguments(
-        f"jigsaw training",
+        f"training",
         evaluation_strategy="epoch",
         learning_rate=args.learning_rate,
         per_device_train_batch_size=args.train_batch_size,
@@ -156,10 +156,10 @@ def main(args):
 
     if args.do_eval:
         logger.info('evaluation')
-        trainer.evaluate()
+        metrics = trainer.evaluate()
 
-        (Path(args.output_dir) / "metrics").mkdir(parents=True, exist_ok=True)
-        trainer.save_metrics(str(Path(args.output_dir) / "metrics"))
+        Path(args.output_dir).mkdir(parents=True, exist_ok=True)
+        trainer.save_metrics(args.output_dir, metrics=metrics)
 
 
 if __name__ == '__main__':
@@ -215,12 +215,16 @@ if __name__ == '__main__':
 
     parser.add_argument("--use_wandb", default=False, type=bool, required=False)
     parser.add_argument("--wandb_token", default='', type=str, required=False)
-    parser.add_argument("--wandb_note", default='', type=str, required=False)
+    parser.add_argument("--wandb_notes", default='', type=str, required=False)
     parser.add_argument("--wandb_project", default='', type=str, required=False)
     parser.add_argument("--wandb_entity", default='', type=str, required=False)
     parser.add_argument("--wandb_group", default='', type=str, required=False)
     parser.add_argument("--wandb_name", default='', type=str, required=False)
-
+    # WANDB_NOTES
+    # WANDB_NAME
+    # WANDB_ENTITY
+    # WANDB_PROJECT
+    # WANDB_TAGS
     parser.add_argument("--per_gpu_train_batch_size", default=8, type=int,
                         help="Batch size per GPU/CPU for training.")
     parser.add_argument("--per_gpu_eval_batch_size", default=8, type=int,

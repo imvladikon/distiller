@@ -1,5 +1,6 @@
 cd ..
 export ROOT_DIR=`pwd`
+#export WANDB_DISABLED=true
 mkdir -p $ROOT_DIR/models/jigsaw
 cd $ROOT_DIR/models/jigsaw &&
   python3 $ROOT_DIR/bert_train_model_multilabels.py \

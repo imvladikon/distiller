@@ -1,5 +1,6 @@
 cd ..
 export ROOT_DIR=`pwd`
+#export WANDB_DISABLED=true
 mkdir -p $ROOT_DIR/models/gong_soft_labels
 cd $ROOT_DIR/models/gong_soft_labels &&
   python3 $ROOT_DIR/bert_train_model_multilabels.py \
