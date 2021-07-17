@@ -34,18 +34,6 @@ def all_google_students():
             yield get_student_models(hidden_size, num_layers)
 
 
-def create_student_model(hidden_size,
-                         num_hidden_layers,
-                         num_attention_heads):
-    config = BertConfig(
-        hidden_size=hidden_size,
-        num_hidden_layers=num_hidden_layers,
-        num_attention_heads=num_attention_heads,
-    )
-    model = BertModel(config)
-    return model
-
-
 if __name__ == '__main__':
     from transformers import AutoModel, BertConfig, BertModel
 
