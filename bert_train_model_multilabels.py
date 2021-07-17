@@ -1,4 +1,5 @@
 import argparse
+import json
 
 from transformers.modelcard import TrainingSummary
 
@@ -6,7 +7,7 @@ from config.datasets import DataFactory, DATASETS_CONFIG_INFO
 from const import *
 from metrics.multiclasseval import Multiclasseval
 from metrics.utils import compute_multilabel_metrics
-from utils import set_seed, dotdict
+from utils import set_seed, dotdict, with_cpu
 import logging
 import torch
 from functools import partial
@@ -176,9 +177,41 @@ def main(args):
         logger.info('evaluation')
         metrics = trainer.evaluate()
 
-        Path(args.output_dir).mkdir(parents=True, exist_ok=True)
-        trainer.save_metrics("eval", metrics=metrics)
+        @with_cpu
+        def eval_model_cpu(trainer, model):
+            return trainer.evaluate()
 
+        metrics_cpu = eval_model_cpu(trainer, model)
+        metrics_cpu = {
+            f"{k}_cpu": metrics_cpu[k]
+            for k in ["eval_runtime", "eval_samples_per_second", "eval_steps_per_second"]
+        }
+        metrics = {**metrics, **metrics_cpu}
+
+        def save_metrics(trainer, metrics, filename, combined=True):
+            """
+            customized version of trainer.save_metrics
+            """
+            self = trainer
+            if not self.is_world_process_zero():
+                return
+            with open(filename, "w") as f:
+                json.dump(metrics, f, indent=4, sort_keys=True)
+            if combined:
+                if os.path.exists(filename):
+                    with open(filename, "r") as f:
+                        all_metrics = json.load(f)
+                else:
+                    all_metrics = {}
+                all_metrics.update(metrics)
+                with open(filename, "w") as f:
+                    json.dump(all_metrics, f, indent=4, sort_keys=True)
+
+        Path(args.output_dir).mkdir(parents=True, exist_ok=True)
+
+        save_metrics(trainer=trainer,
+                     metrics=metrics,
+                     filename=os.path.join(args.output_dir, "eval_results.json"))
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='training and evaluation bert model')
@@ -237,7 +270,7 @@ if __name__ == '__main__':
     parser.add_argument("--optimize_on_cpu", default=True, type=bool, required=False)
     parser.add_argument("--loss_scale", default=128, type=int, required=False)
 
-    parser.add_argument("--use_wandb", default=False, type=bool, required=False)
+    parser.add_argument("--use_wandb", action='store_true', required=False)
     parser.add_argument("--wandb_token", default='', type=str, required=False)
     parser.add_argument("--wandb_notes", default='', type=str, required=False)
     parser.add_argument("--wandb_project", default='', type=str, required=False)

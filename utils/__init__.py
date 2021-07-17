@@ -1,5 +1,6 @@
 import re
 import random
+from functools import wraps
 
 import numpy as np
 import torch
@@ -95,6 +96,26 @@ def dict_to_device(batch, device, filter_props=None):
         return {k: v.to(device) for k, v in batch.items()}
     else:
         return {k: v.to(device) for k, v in batch.items() if k in filter_props}
+
+
+def with_cpu(fn):
+    @wraps(fn)
+    def wrapped_fn(*args, **kwargs):
+        cur_devices = {
+            o: v.device
+            for o, v in kwargs.items()
+            if hasattr(v, "device")
+        }
+        try:
+            for o, v in kwargs.items():
+                if not hasattr(v, "device"): continue
+                v = v.to("cpu")
+            fn(*args, **kwargs)
+        finally:
+            for o, v in kwargs.items():
+                if not hasattr(v, "device"): continue
+                v = v.to(cur_devices[o])
+    return wrapped_fn
 
 
 
