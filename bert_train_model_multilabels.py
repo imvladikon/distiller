@@ -81,7 +81,7 @@ def main(args):
         if args.one_cycle_train:
             model.unfreeze_bert_encoder(['pooler'])
             training_args = TrainingArguments(
-                f"jigsaw training, one_cycle_train",
+                f"one_cycle_training",
                 evaluation_strategy="epoch",
                 learning_rate=args.learning_rate,
                 per_device_train_batch_size=args.train_batch_size,
