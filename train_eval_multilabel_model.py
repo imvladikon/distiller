@@ -189,6 +189,9 @@ def main(args):
         Path(args.output_dir).mkdir(parents=True, exist_ok=True)
         trainer.save_model(args.output_dir)
 
+    if args.do_eval:
+        logger.info('evaluation')
+        trainer.evaluate()
         training_summary = TrainingSummary.from_trainer(
             trainer,
             language="en",
@@ -201,9 +204,6 @@ def main(args):
         model_card = training_summary.to_model_card()
         with open(os.path.join(args.output_dir, "README.md"), "w") as f:
             f.write(model_card)
-
-    if args.do_eval:
-        logger.info('evaluation')
         metric_results = eval_metrics(trainer=trainer,
                                       device="cpu",
                                       dict_args=dict_training_args)
