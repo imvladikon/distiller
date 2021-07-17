@@ -88,7 +88,7 @@ def main(args):
 
     if args.use_wandb:
         import wandb
-        wandb.login(key=[os.environ.get("WANDB_API_TOKEN", args.wandb_api_token)])
+        wandb.login(key=os.environ.get("WANDB_API_TOKEN", args.wandb_api_token))
         wandb_env_vars = ["WANDB_NOTES", "WANDB_NAME", "WANDB_ENTITY", "WANDB_PROJECT", "WANDB_TAGS"]
         for v in wandb_env_vars:
             if v.lower() in args and args[v.lower()]:
