@@ -5,11 +5,17 @@ from transformers.tokenization_utils_base import TruncationStrategy
 
 class TextClassificationPipeline(Pipeline):
 
-    def __init__(self, return_all_scores: bool = False, is_multilabel: bool = True, **kwargs):
+    def __init__(self, return_all_scores: bool = False,
+                 is_multilabel: bool = True,
+                 return_only_logits: bool = False,
+                 threshold: float = None,
+                 **kwargs):
         super().__init__(**kwargs)
 
         self.return_all_scores = return_all_scores
         self.is_multilabel = is_multilabel
+        self.return_only_logits = return_only_logits
+        self.threshold = threshold
 
     def _parse_and_tokenize(
             self, inputs, padding=True, add_special_tokens=True, truncation=TruncationStrategy.DO_NOT_TRUNCATE, **kwargs
@@ -41,10 +47,19 @@ class TextClassificationPipeline(Pipeline):
             scores = np.exp(outputs) / np.exp(outputs).sum(-1, keepdims=True)
 
         if self.return_all_scores or self.is_multilabel:
-            return [
-                [{"label": self.model.config.id2label[i], "score": score.item()} for i, score in enumerate(item)]
-                for item in scores
-            ]
+            if not self.return_only_logits:
+                return [
+                    [{"label": self.model.config.id2label[i], "score": score.item()} for i, score in enumerate(item)]
+                    for item in scores
+                ]
+            else:
+                results = np.array([
+                        [score[i] for i in self.model.config.id2label.keys()]
+                        for score in scores
+                    ])
+                if self.threshold is not None:
+                    results = (results>self.threshold).astype("int")
+                return results
         else:
             return [
                 {"label": self.model.config.id2label[item.argmax()], "score": item.max().item()} for item in scores
@@ -78,6 +93,9 @@ if __name__ == '__main__':
     pipe = TextClassificationPipeline(
         model=model,
         tokenizer=AutoTokenizer.from_pretrained("bert-base-uncased"),
-        is_multilabel=True)
+        is_multilabel=True,
+        return_only_logits=True,
+        threshold=0.5
+    )
     message = """Nice to meet you. I can still me tomorrow at 2pm for 30 minutes. I have another call at 2:30."""
-    pprint(pipe(message, truncation=True, padding="max_length", max_length=512))
+    pprint(pipe([message,message], truncation=True, padding="max_length", max_length=512))
