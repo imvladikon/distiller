@@ -132,7 +132,7 @@ def main(args):
         os.environ["WANDB_DISABLED"] = "true"
 
     dict_training_args = dict(
-        run_name=f"training",
+        run_name= args.wandb_name if args.wandb_name else f"training",
         evaluation_strategy="epoch",
         learning_rate=args.learning_rate,
         per_device_train_batch_size=args.train_batch_size,
@@ -153,7 +153,7 @@ def main(args):
             import copy
             dict_training_args_cycle = copy.deepcopy(dict_training_args)
             dict_training_args_cycle["num_train_epochs"] = 1
-            dict_training_args_cycle["run_name"] = "one_cycle_training"
+            dict_training_args_cycle["run_name"] = args.wandb_name if args.wandb_name else "one_cycle_training"
             model.unfreeze_bert_encoder(['pooler'])
             training_args = TrainingArguments(**dict_training_args_cycle)
             trainer = Trainer(
