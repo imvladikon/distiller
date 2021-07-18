@@ -1,12 +1,14 @@
 from config.datasets.gong_hard_labels import GongHardDatasetConfig
 from config.datasets.gong_soft_labels import GongSoftDatasetConfig
+from config.datasets.gong_with_weak_labeled import GongWithWeakLabeledConfig
 from config.datasets.jigsaw_info import JigsawDatasetConfig
 from config.datasets.utils import read_data
 
 DATASETS_CONFIG_INFO = {
     "jigsaw": JigsawDatasetConfig,
     "gong_hard_labels": GongHardDatasetConfig,
-    "gong_soft_labels": GongSoftDatasetConfig
+    "gong_soft_labels": GongSoftDatasetConfig,
+    "gong_with_weak_labeled": GongWithWeakLabeledConfig
 }
 
 
