@@ -308,7 +308,7 @@ if __name__ == "__main__":
     parser.add_argument("--warmup_linear", default=0.1, type=float, required=False)
     parser.add_argument("--optimize_on_cpu", default=True, type=bool, required=False)
     parser.add_argument("--loss_scale", default=128, type=int, required=False)
-    parser.add_argument("--use_wandb", default=False, type=bool, required=False)
+    parser.add_argument("--use_wandb", action='store_true', required=False)
     parser.add_argument("--wandb_api_token", default='', type=str, required=False)
     parser.add_argument("--wandb_notes", default='', type=str, required=False)
     parser.add_argument("--wandb_project", default='', type=str, required=False)
