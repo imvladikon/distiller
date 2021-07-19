@@ -13,7 +13,6 @@ from datasets import Dataset
 from datasets import DatasetDict
 from torch.utils.data import DataLoader
 
-from const import labels
 
 logger = logging.getLogger(__name__)
 
