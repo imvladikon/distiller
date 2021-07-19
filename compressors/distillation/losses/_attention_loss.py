@@ -6,6 +6,9 @@ from torch.nn import functional as F
 
 
 class AttentionLoss(nn.Module):
+    """
+    MSE hidden_states loss
+    """
     def __init__(self, p: int = 2):
         super().__init__()
         self.p = p
