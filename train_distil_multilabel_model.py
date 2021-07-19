@@ -16,7 +16,7 @@ from config.google_students_models import get_student_models, all_google_student
 from metrics.multiclasseval import Multiclasseval
 from modeling.bert_multilabel_classification import BertForMultiLabelSequenceClassification
 
-from const import labels, device, ROOT_DIR
+from const import device, ROOT_DIR
 from utils import set_seed, dotdict
 from utils.dataloader import load_dataset, datasets_as_loaders
 
