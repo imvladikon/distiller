@@ -5,14 +5,13 @@ export student_model_name=google/bert_uncased_L-6_H-256_A-4
 mkdir -p $ROOT_DIR/models/jigsaw
 cd $ROOT_DIR/models/jigsaw &&
   python3 $ROOT_DIR/train_distil_multilabel_model.py \
-    --teacher_model_name=bert-base-uncased \
+    --teacher_model_name=$ROOT_DIR/models/jigsaw/bert-base-uncased-ft \
     --student_model_name=$student_model_name \
     --dataset_config=jigsaw \
     --max_seq_length=512 \
     --do_train \
     --do_eval \
     --do_lower_case \
-    --one_cycle_train \
     --tokenizer_name=bert-base-uncased \
     --output_dir=$ROOT_DIR/models/jigsaw/distill/$student_model_name \
     --train_batch_size=24 \
