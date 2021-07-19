@@ -225,7 +225,7 @@ def main(args):
             f1 = metric_values["overall_f1"]
             if not loader_key.startswith("train"):
                 if accuracy > best_accuracy:
-                    torch.save(student_model.state_dict(), "best_student.pth")
+                    torch.save(student_model.state_dict(), str(Path(root_dir) / "best_student.pth"))
                     best_accuracy = accuracy
             print(f"{loader_key} accuracy: {accuracy}")
             writer.add_scalar(f"{loader_key}/accuracy", accuracy, epoch)
@@ -268,7 +268,7 @@ def main(args):
         def on_log(self, args, state, control, logs=None, **kwargs):
             _ = logs.pop("total_flos", None)
             if state.is_local_process_zero:
-                with open('valid_result.json', 'w') as fp:
+                with open(str(Path(root_dir) / 'valid_result.json'), 'w') as fp:
                     json.dump(logs, fp)
 
     student_model = BertForTokenClassification.from_pretrained(student_model_name, num_labels=len(label_list)).to(
