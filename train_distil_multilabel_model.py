@@ -176,9 +176,10 @@ def main(args):
     else:
         os.environ["WANDB_DISABLED"] = "true"
 
-    att_callback = AttentionEmdCallback.create_from_configs(teacher_config=teacher_model.config,
-                                                            student_config=student_model.config,
-                                                            device=device)
+    att_callback = ControlFlowCallback(AttentionEmdCallback.create_from_configs(teacher_config=teacher_model.config,
+                                                                                student_config=student_model.config,
+                                                                                device=device),
+                                       loaders="train")
     callbacks = [
         # metric_callback,
         lambda_hiddens_callback,
