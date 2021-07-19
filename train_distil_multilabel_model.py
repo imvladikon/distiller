@@ -1,7 +1,7 @@
 import argparse
+import os
 from pathlib import Path
 
-import matplotlib
 from catalyst.callbacks import ControlFlowCallback, OptimizerCallback
 from catalyst.callbacks.metric import LoaderMetricCallback
 from catalyst.loggers import WandbLogger
@@ -11,20 +11,16 @@ from transformers import AutoTokenizer
 from compressors.distillation.callbacks.attention_emd_callback import AttentionEmdCallback
 from compressors.distillation.schedulers.temperature_schedulers import FlswTemperatureScheduler, \
     CwsmTemperatureScheduler
+from config.datasets import DataFactory, DATASETS_CONFIG_INFO
 from config.google_students_models import get_student_models, all_google_students
 from modeling.bert_multilabel_classification import BertForMultiLabelSequenceClassification
 
 from const import labels, device, ROOT_DIR
 from utils import set_seed, dotdict
 from utils.dataloader import load_dataset, datasets_as_loaders
-from pyemd import emd_with_flow
-
-matplotlib.use("agg")
 
 import logging
 import torch
-
-from modeling.gong import bert_seq_classification as bsc
 
 import pandas as pd
 import wandb
@@ -63,42 +59,31 @@ def main(args):
 
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_name, do_lower_case=args.do_lower_case)
 
-    label_list = labels
+    tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_name, do_lower_case=args.do_lower_case)
+
+    ds_with_info = DataFactory.create_from_config(args.dataset_config,
+                                                  tokenizer=tokenizer,
+                                                  max_length=args.max_seq_length,
+                                                  train_size=args.train_size,
+                                                  val_size=args.val_size)
+    dataset_info = ds_with_info.config
+    ds = ds_with_info.dataset
+
+    id2label = dataset_info.id2label
+    label2id = dataset_info.label2id
+    label_list = dataset_info.labels
+
     teacher_model = BertForMultiLabelSequenceClassification.from_pretrained(args.teacher_model_name,
                                                                             num_labels=len(label_list))
+    teacher_model.config.id2label = id2label
+    teacher_model.config.label2id = label2id
     teacher_model.to(device)
-
-    ds = load_dataset(
-        train_filename=args.train_filename,
-        val_filename=args.val_filename,
-        tokenizer=tokenizer,
-        max_seq_length=512,
-        train_format_with_proba=args.train_format_with_proba,
-        train_size=args.train_size,
-        val_size=args.val_size
-    )
-    if args.aug_train:
-        import glob
-        import os
-        from datasets import concatenate_datasets
-
-        for f in glob.glob(f"{args.aug_train}/*.csv"):
-            if not os.path.exists(f): continue
-            new_ds = load_dataset(
-                train_filename=f,
-                tokenizer=tokenizer,
-                max_seq_length=512,
-                train_format_with_proba=True,
-                threshold=args.threshold
-            )
-            ds["train"] = concatenate_datasets([ds["train"], new_ds["train"]])
 
     loaders = datasets_as_loaders(ds, batch_size=args.train_batch_size, val_batch_size=args.val_batch_size)
 
-    student_model = bsc.BertForMultiLabelSequenceClassification.from_pretrained(
+    student_model = BertForMultiLabelSequenceClassification.from_pretrained(
         args.student_model_name, num_labels=len(label_list)
     )
-
     student_model.config.label2id = teacher_model.config.label2id
     student_model.config.id2label = teacher_model.config.id2label
 
@@ -177,12 +162,18 @@ def main(args):
     )
 
     if args.use_wandb:
-
-        import os
-
-        if args.wandb_token:
-            os.environ["WANDB_API_KEY"] = args.wandb_token
-            del args["wandb_token"]
+        import wandb
+        wandb.login(key=os.environ.get("WANDB_API_TOKEN", args.wandb_api_token))
+        wandb_env_vars = ["WANDB_NOTES", "WANDB_NAME", "WANDB_ENTITY", "WANDB_PROJECT", "WANDB_TAGS"]
+        for v in wandb_env_vars:
+            if v.lower() in args and args[v.lower()]:
+                os.environ[v] = args[v.lower()]
+        try:
+            del args["wandb_api_token"]
+        except:
+            pass
+    else:
+        os.environ["WANDB_DISABLED"] = "true"
 
     att_callback = AttentionEmdCallback.create_from_configs(teacher_config=teacher_model.config,
                                                             student_config=student_model.config,
@@ -216,13 +207,13 @@ def main(args):
                                    name=f"distill_t_{t_model_name}_s_{s_model_name}")
         # note=args.wandb_note)
 
-        output_model_dir = Path(args.output_model_dir) / s_model_name
-        output_model_dir.mkdir(parents=True, exist_ok=True)
+        output_dir = Path(args.output_dir) / s_model_name
+        output_dir.mkdir(parents=True, exist_ok=True)
 
         def close_log(self) -> None:
             """Closes the logger."""
-            student_model.save_pretrained(str(output_model_dir))
-            wandb.save(f"{str(output_model_dir)}/*")
+            student_model.save_pretrained(str(output_dir))
+            wandb.save(f"{str(output_dir)}/*")
             self.run.finish()
 
         WandbLogger.close_log = close_log
@@ -272,7 +263,7 @@ def main(args):
             verbose=True
         )
 
-    student_model.save_pretrained(output_model_dir)
+    student_model.save_pretrained(output_dir)
 
 
 if __name__ == "__main__":
@@ -284,6 +275,12 @@ if __name__ == "__main__":
     parser.add_argument("--student_model_name", default=student_model_name, type=str, required=False,
                         help="Path to pre-trained model or shortcut name selected in the list: " + ", ".join(
                             all_google_students()))
+    parser.add_argument("--dataset_config",
+                        default="gong_soft_labels",
+                        type=str,
+                        required=False,
+                        choices=list(DATASETS_CONFIG_INFO.keys()),
+                        help="need to choose a dataset config")
     parser.add_argument("--student_config_name", default="", type=str,
                         help="Pretrained config name or path if not the same as model_name")
     parser.add_argument("--teacher_model_name", default=teacher_model_name, type=str, required=False)
@@ -294,34 +291,25 @@ if __name__ == "__main__":
                         help="Whether to run training.")
     parser.add_argument("--do_eval", action='store_true',
                         help="Whether to run eval on the dev set.")
-    parser.add_argument("--train_filename", default=str(ROOT_DIR / "data" / "0" / "train.csv"),
-                        type=str, required=False)
     parser.add_argument("--do_lower_case", action='store_true',
                         help="Set this flag if you are using an uncased model.")
-    parser.add_argument("--val_filename", default=str(ROOT_DIR / "data" / "0" / "test.csv"), type=str, required=False)
     parser.add_argument("--one_cycle_train", default=True, action='store_true', required=False)
-    parser.add_argument("--train_format_with_proba", default=False, action='store_true', required=False)
     parser.add_argument("--train_size", default=-1, type=int, required=False)
     parser.add_argument("--val_size", default=-1, type=int, required=False)
-    parser.add_argument("--data_dir", default=str(ROOT_DIR / 'data'), type=str, required=False)
-    parser.add_argument("--task_name", default='email_reject', type=str, required=False)
     parser.add_argument("--tokenizer_name",
                         default="bert-base-uncased",
                         type=str,
                         help="Pretrained tokenizer name or path if not the same as model_name",
                         required=False)
-    parser.add_argument("--output_model_dir", default=str(ROOT_DIR / 'models' / 'distill'), type=str, required=False)
-    parser.add_argument("--data_output_dir", default=(ROOT_DIR / 'data' / 'class' / 'output'), type=str, required=False)
     parser.add_argument("--train_batch_size", default=24, type=int, required=False)
     parser.add_argument("--val_batch_size", default=12, type=int, required=False)
     parser.add_argument("--n_threads", default=4, type=int, required=False)
     parser.add_argument("--warmup_linear", default=0.1, type=float, required=False)
     parser.add_argument("--optimize_on_cpu", default=True, type=bool, required=False)
     parser.add_argument("--loss_scale", default=128, type=int, required=False)
-    parser.add_argument("--labels_list", default=labels, type=list, required=False)
     parser.add_argument("--use_wandb", default=False, type=bool, required=False)
-    parser.add_argument("--wandb_token", default='', type=str, required=False)
-    parser.add_argument("--wandb_note", default='', type=str, required=False)
+    parser.add_argument("--wandb_api_token", default='', type=str, required=False)
+    parser.add_argument("--wandb_notes", default='', type=str, required=False)
     parser.add_argument("--wandb_project", default='', type=str, required=False)
     parser.add_argument("--wandb_entity", default='', type=str, required=False)
     parser.add_argument("--wandb_group", default='', type=str, required=False)
@@ -350,8 +338,6 @@ if __name__ == "__main__":
                         help="Log every X updates steps.")
     parser.add_argument('--save_steps', type=int, default=50,
                         help="Save checkpoint every X updates steps.")
-    parser.add_argument("--eval_all_checkpoints", action='store_true',
-                        help="Evaluate all checkpoints starting with the same prefix as model_name ending and ending with step number")
     parser.add_argument("--no_cuda", action='store_true',
                         help="Avoid using CUDA when available")
     parser.add_argument('--seed', type=int, default=42,
@@ -369,9 +355,7 @@ if __name__ == "__main__":
     parser.add_argument("--task_loss_weight", default=0.5, type=float, required=False)
     parser.add_argument("--emd_loss_weight", default=0.2, type=float, required=False)
     parser.add_argument("--threshold", default=0.5, type=float, required=False)
-    parser.add_argument("--aug_train", default=str(ROOT_DIR / 'data' / 'unlabeled_data'), type=str,
-                        required=False)
-    parser.add_argument("--output_dir", default=None, type=str, required=False,
+    parser.add_argument("--output_dir", default=None, type=str, required=True,
                         help="The output directory where the model predictions and checkpoints will be written.")
 
     args = parser.parse_args()
