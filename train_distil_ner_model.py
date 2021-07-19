@@ -20,6 +20,7 @@ import json
 import pandas as pd
 from compressors.distillation.losses import KLDivLoss, MSEHiddenStatesLoss
 from config.google_students_models import get_student_models, all_google_students
+from const import device
 from utils import dict_to_device, dotdict, set_seed
 from utils.common import file_size
 
@@ -147,12 +148,11 @@ def main(args):
     student_model_name = args.student_model_name
     output_dir = args.output_dir
     num_epochs = args.num_train_epochs
-    root_dir = str(output_dir / f"{student_model_name}_T-{int(temperature)}")
+    root_dir = str(Path(output_dir) / f"{student_model_name}_T-{int(temperature)}")
     Path(root_dir).mkdir(exist_ok=True, parents=True)
 
     writer = SummaryWriter()
     teacher_model_name = args.teacher_model_name
-    device = args.device
     label_name = "ner_tags"
     text_name = "tokens"
     datasets = load_dataset("conllpp")
@@ -210,9 +210,13 @@ def main(args):
                         optimizer=optimizer,
                         mapping_optimizer=mapping_optimizer,
                         metric_fn=metric_fn,
+                        label_list=label_list
                     )
                 else:
-                    metrics = val_iter(student=student_model, batch=batch, metric_fn=metric_fn)
+                    metrics = val_iter(student=student_model,
+                                       batch=batch,
+                                       metric_fn=metric_fn,
+                                       label_list=label_list)
                 try:
                     log_str = " ".join([f"{key}: {met:.3f}" for key, met in metrics.items()])
                     pbar_loader.set_description(log_str)
@@ -322,6 +326,7 @@ if __name__ == '__main__':
     hidden_size, num_layers = 256, 6
     student_model_name = get_student_models(hidden_size=hidden_size, num_layers=num_layers)
     teacher_model_name = "imvladikon/bert-large-cased-finetuned-conll03-english"
+    teacher_model_name = "bert-base-uncased"
 
     parser = argparse.ArgumentParser(description='Fine-tuning bert')
     parser.add_argument("--student_model_name", default=student_model_name, type=str, required=False,
@@ -401,7 +406,7 @@ if __name__ == '__main__':
     parser.add_argument("--task_loss_weight", default=0.5, type=float, required=False)
     parser.add_argument("--emd_loss_weight", default=0.2, type=float, required=False)
     parser.add_argument("--threshold", default=0.5, type=float, required=False)
-    parser.add_argument("--output_dir", default=None, type=str, required=True,
+    parser.add_argument("--output_dir", default=".", type=str, required=False,
                         help="The output directory where the model predictions and checkpoints will be written.")
     parser.add_argument("--calculate_per_class",
                         action='store_true',
