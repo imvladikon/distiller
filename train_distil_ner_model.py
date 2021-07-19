@@ -1,6 +1,11 @@
+import argparse
 import os
-from data import load_dataset, load_metric
+from functools import partial
+import os
+from pathlib import Path
+
 import torch
+from datasets import load_dataset, load_metric
 from torch.utils.data import DataLoader
 from tqdm.autonotebook import tqdm, trange
 from transformers import AutoTokenizer, BertForTokenClassification
@@ -11,18 +16,26 @@ from transformers import (AutoModelForTokenClassification,
 from transformers import DataCollatorForTokenClassification
 from transformers import TrainerCallback
 import numpy as np
-import ujson as json
+import json
 import pandas as pd
 from compressors.distillation.losses import KLDivLoss, MSEHiddenStatesLoss
+from config.google_students_models import get_student_models, all_google_students
+from utils import dict_to_device, dotdict, set_seed
+from utils.common import file_size
 
 try:
     from torch.utils.tensorboard import SummaryWriter
 except ImportError:
     from tensorboardX import SummaryWriter
 
-label_list = None
 
-def tokenize_and_align_labels(examples, tokenizer, text_name, label_name, is_split_into_words, label_all_tokens=True):
+def tokenize_and_align_labels(examples,
+                              tokenizer,
+                              text_name,
+                              label_name,
+                              label_list,
+                              is_split_into_words,
+                              label_all_tokens=True):
     tokenized_inputs = tokenizer(examples[text_name], truncation=True, is_split_into_words=is_split_into_words)
 
     labels = []
@@ -50,19 +63,6 @@ def tokenize_and_align_labels(examples, tokenizer, text_name, label_name, is_spl
     return tokenized_inputs
 
 
-def convert_bytes(num):
-    for x in ['bytes', 'KB', 'MB', 'GB', 'TB']:
-        if num < 1024.0:
-            return "%3.1f %s" % (num, x)
-        num /= 1024.0
-
-
-def file_size(file_path):
-    if os.path.isfile(file_path):
-        file_info = os.stat(file_path)
-        return convert_bytes(file_info.st_size)
-
-
 def train_iter(
         student,
         teacher,
@@ -73,6 +73,7 @@ def train_iter(
         optimizer,
         mapping_optimizer,
         metric_fn,
+        label_list
 ):
     student.train()
     teacher.eval()
@@ -120,7 +121,7 @@ def train_iter(
 
 
 @torch.no_grad()
-def val_iter(student, batch, metric_fn):
+def val_iter(student, batch, metric_fn, label_list):
     student.eval()
     student_outputs = student(**batch, output_hidden_states=False, return_dict=True)
     predictions = student_outputs["logits"].argmax(-1).detach().cpu().numpy()
@@ -139,41 +140,44 @@ def val_iter(student, batch, metric_fn):
     }
 
 
-def dict_to_device(batch, device):
-    return {k: v.to(device) for k, v in batch.items()}
+def main(args):
+    # base_dir, student_model_name, temperature, batch_size = 16, num_epochs = 5
 
+    temperature = args.temperature
+    student_model_name = args.student_model_name
+    output_dir = args.output_dir
+    num_epochs = args.num_train_epochs
+    root_dir = str(output_dir / f"{student_model_name}_T-{int(temperature)}")
+    Path(root_dir).mkdir(exist_ok=True, parents=True)
 
-def distill(base_dir, student_model_name, temperature, batch_size=16, num_epochs=5):
-    root_dir = str(base_dir/f"{student_model_name}_T-{int(temperature)}")
-    # !mkdir -p {root_dir}
-    import os
-    os.chdir(root_dir)
-    global label_list
     writer = SummaryWriter()
-    # task = "ner"
-    teacher_model_name = "imvladikon/bert-large-cased-finetuned-conll03-english"
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    teacher_model_name = args.teacher_model_name
+    device = args.device
     label_name = "ner_tags"
     text_name = "tokens"
     datasets = load_dataset("conllpp")
     metric_fn = load_metric("seqeval")
     label_list = datasets["train"].features[f"ner_tags"].feature.names
     tokenizer = AutoTokenizer.from_pretrained(teacher_model_name)
-    tokenize_and_align = lambda examples: tokenize_and_align_labels(examples, tokenizer=tokenizer, text_name=text_name,
-                                                                    label_name=label_name, is_split_into_words=True,
-                                                                    label_all_tokens=True)
+    tokenize_and_align = partial(tokenize_and_align_labels,
+                                 tokenizer=tokenizer,
+                                 text_name=text_name,
+                                 label_name=label_name,
+                                 label_list=label_list,
+                                 is_split_into_words=True,
+                                 label_all_tokens=True)
     datasets = datasets.map(tokenize_and_align, batched=True)
     datasets = datasets.remove_columns(['chunk_tags', 'id', 'tokens', 'pos_tags', 'ner_tags'])
     data_collator = DataCollatorForTokenClassification(tokenizer)
     loaders = {
-        "train": DataLoader(datasets["train"], batch_size=batch_size, shuffle=True, collate_fn=data_collator),
-        "valid": DataLoader(datasets["test"], batch_size=batch_size, collate_fn=data_collator),
+        "train": DataLoader(datasets["train"], batch_size=args.train_batch_size, shuffle=True,
+                            collate_fn=data_collator),
+        "valid": DataLoader(datasets["test"], batch_size=args.val_batch_size, collate_fn=data_collator),
     }
     teacher_model = AutoModelForTokenClassification.from_pretrained(teacher_model_name, num_labels=len(label_list)).to(
         device)
     student_model = BertForTokenClassification.from_pretrained(student_model_name, num_labels=len(label_list)).to(
         device)
-
     student_model.config.label2id = teacher_model.config.label2id
     student_model.config.id2label = teacher_model.config.id2label
 
@@ -227,16 +231,15 @@ def distill(base_dir, student_model_name, temperature, batch_size=16, num_epochs
             writer.add_scalar(f"{loader_key}/accuracy", accuracy, epoch)
             writer.add_scalar(f"{loader_key}/f1", f1, epoch)
 
-    args = TrainingArguments(
+    training_args = TrainingArguments(
         f"test-ner",
         evaluation_strategy="epoch",
         learning_rate=2e-5,
-        per_device_train_batch_size=batch_size,
-        per_device_eval_batch_size=batch_size,
+        per_device_train_batch_size=args.train_batch_size,
+        per_device_eval_batch_size=args.val_batch_size,
         num_train_epochs=num_epochs,
         weight_decay=0.01
     )
-
 
     def compute_metrics(p):
         predictions, labels = p
@@ -260,7 +263,6 @@ def distill(base_dir, student_model_name, temperature, batch_size=16, num_epochs
             "accuracy": results["overall_accuracy"],
         }
 
-
     class WiterCallback(TrainerCallback):
 
         def on_log(self, args, state, control, logs=None, **kwargs):
@@ -269,13 +271,14 @@ def distill(base_dir, student_model_name, temperature, batch_size=16, num_epochs
                 with open('valid_result.json', 'w') as fp:
                     json.dump(logs, fp)
 
-
-    student_model = BertForTokenClassification.from_pretrained(student_model_name, num_labels=len(label_list)).to(device)
+    student_model = BertForTokenClassification.from_pretrained(student_model_name, num_labels=len(label_list)).to(
+        device)
     student_model.load_state_dict(torch.load("best_student.pth"))
 
+    # TODO : Trainer is only for eval. part.  - fix it, removing hf trainer and combining with catalyst HFRunner
     trainer = Trainer(
         student_model,
-        args,
+        training_args,
         train_dataset=datasets["train"],
         eval_dataset=datasets["validation"],
         data_collator=data_collator,
@@ -297,23 +300,114 @@ def distill(base_dir, student_model_name, temperature, batch_size=16, num_epochs
         for prediction, label in zip(predictions, labels)
     ]
     results = metric_fn.compute(predictions=true_predictions, references=true_labels)
-    pd.DataFrame(results).to_json("test_result.json")
+    pd.DataFrame(results).to_json(str(Path(root_dir) / "test_result.json"))
 
     train_info = {
-        "batch_size": batch_size,
+        "train_batch_size": args.train_batch_size,
+        "val_batch_size": args.val_batch_size,
         "num_epochs": num_epochs,
         "temperature": temperature,
         "teacher_model_name": teacher_model_name,
         "student_model_name": student_model_name,
         "model_size": file_size("best_student.pth")}
-    with open("train_info.json", "w") as fp:
-        json.dump(train_info, fp)
 
+    with open(str(Path(root_dir) / "train_info.json"), "w") as fp:
+        json.dump(train_info, fp)
 
     writer.flush()
     writer.close()
 
 
 if __name__ == '__main__':
-    # distill()
-    pass
+    hidden_size, num_layers = 256, 6
+    student_model_name = get_student_models(hidden_size=hidden_size, num_layers=num_layers)
+    teacher_model_name = "imvladikon/bert-large-cased-finetuned-conll03-english"
+
+    parser = argparse.ArgumentParser(description='Fine-tuning bert')
+    parser.add_argument("--student_model_name", default=student_model_name, type=str, required=False,
+                        help="Path to pre-trained model or shortcut name selected in the list: " + ", ".join(
+                            all_google_students()))
+    parser.add_argument("--student_config_name", default="", type=str,
+                        help="Pretrained config name or path if not the same as model_name")
+    parser.add_argument("--teacher_model_name", default=teacher_model_name, type=str, required=False)
+    parser.add_argument("--max_seq_length", default=512, type=int,
+                        help="The maximum total input sequence length after tokenization. Sequences longer "
+                             "than this will be truncated, sequences shorter will be padded.")
+    parser.add_argument("--do_train", action='store_true',
+                        help="Whether to run training.")
+    parser.add_argument("--do_eval", action='store_true',
+                        help="Whether to run eval on the dev set.")
+    parser.add_argument("--do_lower_case", action='store_true',
+                        help="Set this flag if you are using an uncased model.")
+    parser.add_argument("--one_cycle_train", default=True, action='store_true', required=False)
+    parser.add_argument("--train_size", default=-1, type=int, required=False)
+    parser.add_argument("--val_size", default=-1, type=int, required=False)
+    parser.add_argument("--tokenizer_name",
+                        default="bert-base-uncased",
+                        type=str,
+                        help="Pretrained tokenizer name or path if not the same as model_name",
+                        required=False)
+    parser.add_argument("--train_batch_size", default=24, type=int, required=False)
+    parser.add_argument("--val_batch_size", default=12, type=int, required=False)
+    parser.add_argument("--n_threads", default=4, type=int, required=False)
+    parser.add_argument("--warmup_linear", default=0.1, type=float, required=False)
+    parser.add_argument("--optimize_on_cpu", default=True, type=bool, required=False)
+    parser.add_argument("--loss_scale", default=128, type=int, required=False)
+    parser.add_argument("--use_wandb", action='store_true', required=False)
+    parser.add_argument("--wandb_api_token", default='', type=str, required=False)
+    parser.add_argument("--wandb_notes", default='', type=str, required=False)
+    parser.add_argument("--wandb_project", default='', type=str, required=False)
+    parser.add_argument("--wandb_entity", default='', type=str, required=False)
+    parser.add_argument("--wandb_group", default='', type=str, required=False)
+    parser.add_argument("--wandb_name", default='', type=str, required=False)
+    parser.add_argument("--per_gpu_train_batch_size", default=8, type=int,
+                        help="Batch size per GPU/CPU for training.")
+    parser.add_argument("--per_gpu_eval_batch_size", default=8, type=int,
+                        help="Batch size per GPU/CPU for evaluation.")
+    parser.add_argument('--gradient_accumulation_steps', type=int, default=1,
+                        help="Number of updates steps to accumulate before performing a backward/update pass.")
+    parser.add_argument("--learning_rate", default=3e-5, type=float,
+                        help="The initial learning rate for Adam.")
+    parser.add_argument("--weight_decay", default=0.0, type=float,
+                        help="Weight deay if we apply some.")
+    parser.add_argument("--adam_epsilon", default=1e-8, type=float,
+                        help="Epsilon for Adam optimizer.")
+    parser.add_argument("--max_grad_norm", default=1.0, type=float,
+                        help="Max gradient norm.")
+    parser.add_argument("--num_train_epochs", default=5, type=int,
+                        help="Total number of training epochs to perform.")
+    parser.add_argument("--max_steps", default=-1, type=int,
+                        help="If > 0: set total number of training steps to perform. Override num_train_epochs.")
+    parser.add_argument("--warmup_steps", default=0, type=int,
+                        help="Linear warmup over warmup_steps.")
+    parser.add_argument('--logging_steps', type=int, default=50,
+                        help="Log every X updates steps.")
+    parser.add_argument('--save_steps', type=int, default=50,
+                        help="Save checkpoint every X updates steps.")
+    parser.add_argument("--no_cuda", action='store_true',
+                        help="Avoid using CUDA when available")
+    parser.add_argument('--seed', type=int, default=42,
+                        help="random seed for initialization")
+    parser.add_argument('--fp16', action='store_true',
+                        help="Whether to use 16-bit (mixed) precision (through NVIDIA apex) instead of 32-bit")
+    parser.add_argument('--fp16_opt_level', type=str, default='O1',
+                        help="For fp16: Apex AMP optimization level selected in ['O0', 'O1', 'O2', and 'O3']."
+                             "See details at https://nvidia.github.io/apex/amp.html")
+    parser.add_argument("--local_rank", type=int, default=-1,
+                        help="For distributed training: local_rank")
+    parser.add_argument("--temperature", default=1, type=float, required=False)
+    parser.add_argument("--kl_div_loss_weight", default=0.2, type=float, required=False)
+    parser.add_argument("--mse_loss_weight", default=0.1, type=float, required=False)
+    parser.add_argument("--task_loss_weight", default=0.5, type=float, required=False)
+    parser.add_argument("--emd_loss_weight", default=0.2, type=float, required=False)
+    parser.add_argument("--threshold", default=0.5, type=float, required=False)
+    parser.add_argument("--output_dir", default=None, type=str, required=True,
+                        help="The output directory where the model predictions and checkpoints will be written.")
+    parser.add_argument("--calculate_per_class",
+                        action='store_true',
+                        help="Calculate metrics per class")
+    args = parser.parse_args()
+    args = vars(args)
+    args = dotdict(args)
+    set_seed(args.seed)
+    main(args)

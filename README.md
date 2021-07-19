@@ -1,1 +1,3 @@
-# distiller
+## Distillation project
+
+### Project structure:
