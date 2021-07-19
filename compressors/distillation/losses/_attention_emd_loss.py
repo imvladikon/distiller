@@ -7,7 +7,6 @@ import numpy as np
 import torch
 from pyemd import emd_with_flow
 
-from bert_email_labeling import logger
 from utils import dotdict
 
 
