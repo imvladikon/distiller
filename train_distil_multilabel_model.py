@@ -13,6 +13,7 @@ from compressors.distillation.schedulers.temperature_schedulers import FlswTempe
     CwsmTemperatureScheduler
 from config.datasets import DataFactory, DATASETS_CONFIG_INFO
 from config.google_students_models import get_student_models, all_google_students
+from metrics.multiclasseval import Multiclasseval
 from modeling.bert_multilabel_classification import BertForMultiLabelSequenceClassification
 
 from const import labels, device, ROOT_DIR
@@ -148,11 +149,11 @@ def main(args):
     teacher_model.config.output_hidden_states = True
     student_model.config.output_hidden_states = True
 
-    metric = load_metric(str(ROOT_DIR / 'metrics' / 'multiclasseval.py'),
-                         threshold=args.threshold,
-                         num_classes=len(label_list))
+    metric = Multiclasseval()
     metric.threshold = args.threshold
     metric.num_classes = len(label_list)
+    metric.labels = label_list
+    metric.calculate_per_class = args.calculate_per_class
 
     # regression is setting to True, for avoiding of calculating logits.argmax(-1) in HFMetric
     metric_callback = LoaderMetricCallback(
@@ -357,7 +358,9 @@ if __name__ == "__main__":
     parser.add_argument("--threshold", default=0.5, type=float, required=False)
     parser.add_argument("--output_dir", default=None, type=str, required=True,
                         help="The output directory where the model predictions and checkpoints will be written.")
-
+    parser.add_argument("--calculate_per_class",
+                        action='store_true',
+                        help="Calculate metrics per class")
     args = parser.parse_args()
     args = vars(args)
     args = dotdict(args)
