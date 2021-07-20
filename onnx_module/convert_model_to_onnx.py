@@ -4,6 +4,8 @@ from pathlib import Path
 
 from psutil import cpu_count
 
+from const import ROOT_DIR
+
 os.environ["OMP_NUM_THREADS"] = str(cpu_count(logical=True))
 os.environ["OMP_WAIT_POLICY"] = 'ACTIVE'
 
@@ -78,18 +80,15 @@ def main(args):
     # Constants from the performance optimization available in onnxruntime
     # It needs to be done before importing onnxruntime
 
-    tokenizer = BertTokenizerFast.from_pretrained("bert-base-cased")
-    cpu_model = create_model_for_provider("onnx/bert-base-cased.onnx", "CPUExecutionProvider")
+    tokenizer = BertTokenizerFast.from_pretrained(args.tokenizer_name)
+    cpu_model = create_model_for_provider(onnx_model_path, "CPUExecutionProvider")
 
     # Inputs are provided through numpy array
     model_inputs = tokenizer("My name is Bert", return_tensors="pt")
     inputs_onnx = {k: v.cpu().detach().numpy() for k, v in model_inputs.items()}
-
     # Run the model (None = get all the outputs)
     sequence, pooled = cpu_model.run(None, inputs_onnx)
-
     # Print information about outputs
-
     print(f"Sequence output: {sequence.shape}, Pooled output: {pooled.shape}")
 
     PROVIDERS = {
@@ -223,8 +222,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Fine-tuning bert')
     parser.add_argument("--model_name", default="", type=str, required=False,
                         help="Path to pre-trained model or shortcut name")
-    parser.add_argument("--student_config_name", default="", type=str,
-                        help="Pretrained config name or path if not the same as model_name")
     parser.add_argument("--tokenizer_name",
                         default="bert-base-uncased",
                         type=str,
@@ -234,7 +231,7 @@ if __name__ == '__main__':
                         help="Avoid using CUDA when available")
     parser.add_argument('--seed', type=int, default=42,
                         help="random seed for initialization")
-    parser.add_argument("--output_dir", default=".", type=str, required=False,
+    parser.add_argument("--output_dir", default=str(ROOT_DIR/"models"/"onnx"), type=str, required=False,
                         help="The output directory where the model predictions and checkpoints will be written.")
     args = parser.parse_args()
     args = vars(args)
