@@ -1,7 +1,7 @@
 import re
 import random
 from functools import wraps
-
+from utils.data import any2device
 import numpy as np
 import torch
 
@@ -127,3 +127,6 @@ if __name__ == '__main__':
 
     result = match_sorted_array_to_another_sorted_array(I, J)
     print(result)
+
+
+__all__ = ["any2device"]

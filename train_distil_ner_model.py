@@ -18,7 +18,7 @@ from transformers import TrainerCallback
 import numpy as np
 import json
 import pandas as pd
-from compressors.distillation.losses import KLDivLoss, MSEHiddenStatesLoss
+from distillation.losses import KLDivLoss, MSEHiddenStatesLoss
 from config.google_students_models import get_student_models, all_google_students
 from const import device
 from utils import dict_to_device, dotdict, set_seed

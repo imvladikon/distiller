@@ -5,12 +5,10 @@ from pathlib import Path
 from catalyst.callbacks import ControlFlowCallback, OptimizerCallback
 from catalyst.callbacks.metric import LoaderMetricCallback
 from catalyst.loggers import WandbLogger
-from datasets import load_metric
 from transformers import AutoTokenizer
 
-from compressors.distillation.callbacks.attention_emd_callback import AttentionEmdCallback
-from compressors.distillation.schedulers.temperature_schedulers import FlswTemperatureScheduler, \
-    CwsmTemperatureScheduler
+from distillation.callbacks.attention_emd_callback import AttentionEmdCallback
+from distillation.schedulers.temperature_schedulers import CwsmTemperatureScheduler
 from config.datasets import DataFactory, DATASETS_CONFIG_INFO
 from config.google_students_models import get_student_models, all_google_students
 from metrics.multiclasseval import Multiclasseval
@@ -18,13 +16,12 @@ from modeling.bert_multilabel_classification import BertForMultiLabelSequenceCla
 
 from const import device, ROOT_DIR
 from utils import set_seed, dotdict
-from utils.dataloader import load_dataset, datasets_as_loaders
+from utils.dataloader import datasets_as_loaders
 
 import logging
 import torch
 
 import pandas as pd
-import wandb
 
 logging.basicConfig(format='%(asctime)s\t%(levelname)s\t%(name)s\t%(message)s',
                     datefmt='%Y-%m-%d %H:%M:%S',
@@ -37,15 +34,15 @@ pd.set_option('display.max_columns', 500)
 pd.set_option('display.width', 300)
 pd.set_option('display.max_colwidth', 100)
 
-from compressors.distillation.callbacks import (
+from distillation.callbacks import (
     HiddenStatesSelectCallback,
     KLDivCallback,
     LambdaPreprocessCallback,
     MetricAggregationCallback,
     MSEHiddenStatesCallback,
 )
-from compressors.distillation.runners import HFDistilRunner
-from compressors.metrics.hf_metric import HFMetric
+from distillation.runners import HFDistilRunner
+from metrics.hf_metric import HFMetric
 
 
 def main(args):
