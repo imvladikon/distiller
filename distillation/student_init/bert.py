@@ -55,11 +55,12 @@ class StudentFactory:
         if self.reduce_word_embeddings_method in AVAILABLE_REDUCE_METHODS:
             tokenizer = kwargs.get("tokenizer", AutoTokenizer.from_pretrained("bert-base-uncased"))
             word_embedding_matrix = self.reduce_word_embeddings(tokenizer=tokenizer)
+            device = model.device
             model_prefix = model.base_model_prefix
             base_model = model
             if hasattr(model, model_prefix):
                 base_model = getattr(model, model_prefix)
-            base_model.embeddings.word_embeddings.weight.data.copy_(torch.from_numpy(word_embedding_matrix))
+            base_model.embeddings.word_embeddings.weight.data.copy_(torch.from_numpy(word_embedding_matrix).to(device))
             # TODO: add fp16
         return model
 
