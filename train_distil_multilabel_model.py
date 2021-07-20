@@ -10,7 +10,7 @@ from transformers import AutoTokenizer
 from distillation.callbacks.attention_emd_callback import AttentionEmdCallback
 from distillation.schedulers.temperature_schedulers import CwsmTemperatureScheduler
 from config.datasets import DataFactory, DATASETS_CONFIG_INFO
-from config.google_students_models import get_student_models, all_google_students
+from distillation.student_init.google_students_models import get_student_models, all_google_students
 from metrics.multiclasseval import Multiclasseval
 from modeling.bert_multilabel_classification import BertForMultiLabelSequenceClassification
 

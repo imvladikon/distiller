@@ -1,7 +1,5 @@
 import argparse
-import os
 from functools import partial
-import os
 from pathlib import Path
 
 import torch
@@ -19,7 +17,7 @@ import numpy as np
 import json
 import pandas as pd
 from distillation.losses import KLDivLoss, MSEHiddenStatesLoss
-from config.google_students_models import get_student_models, all_google_students
+from distillation.student_init.google_students_models import get_student_models, all_google_students
 from const import device
 from utils import dict_to_device, dotdict, set_seed
 from utils.common import file_size
