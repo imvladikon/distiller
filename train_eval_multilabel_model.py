@@ -133,7 +133,6 @@ def main(args):
 
     dict_training_args = dict(
         run_name= args.wandb_name if args.wandb_name else f"training",
-        evaluation_strategy="epoch",
         learning_rate=args.learning_rate,
         per_device_train_batch_size=args.train_batch_size,
         per_device_eval_batch_size=args.val_batch_size,
