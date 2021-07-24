@@ -202,7 +202,8 @@ def main(args):
         student_model_name = args.student_model_name
         s_model_name = os.path.basename(student_model_name) if os.path.isabs(student_model_name) else student_model_name
         s_model_name = f"{s_model_name}_T-{args.temperature}"
-        wandb_logger = WandbLogger(project="distill_bert",
+        project_name = os.environ.get("WANDB_PROJECT", "distill_bert")
+        wandb_logger = WandbLogger(project=project_name,
                                    name=f"distill_t_{t_model_name}_s_{s_model_name}")
         # note=args.wandb_note)
 
