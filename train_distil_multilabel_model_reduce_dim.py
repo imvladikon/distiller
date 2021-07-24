@@ -276,14 +276,9 @@ def main(args):
 
 
 if __name__ == "__main__":
-    hidden_size, num_layers = 256, 6
-    student_model_name = get_student_models(hidden_size=hidden_size, num_layers=num_layers)
     teacher_model_name = ROOT_DIR / 'models' / 'tuned' / 'tuned_bertreply'
 
     parser = argparse.ArgumentParser(description='Fine-tuning bert')
-    parser.add_argument("--student_model_name", default=student_model_name, type=str, required=False,
-                        help="Path to pre-trained model or shortcut name selected in the list: " + ", ".join(
-                            all_google_students()))
     parser.add_argument("--dataset_config",
                         default="gong_soft_labels",
                         type=str,
@@ -377,6 +372,9 @@ if __name__ == "__main__":
                         help="Calculate metrics per class")
     args = parser.parse_args()
     args = vars(args)
+    hidden_size, num_layers = args["hidden_size"], args["num_hidden_layers"]
+    student_model_name = get_student_models(hidden_size=hidden_size, num_layers=num_layers)
+    args["student_model_name"] = student_model_name
     args = dotdict(args)
     set_seed(args.seed)
     main(args)
