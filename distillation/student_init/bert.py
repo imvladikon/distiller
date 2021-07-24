@@ -40,12 +40,13 @@ class StudentFactory:
         self.reduce_word_embeddings_method = reduce_word_embeddings_method
         self.init_layers_from_teacher = init_layers_from_teacher
 
-    def produce(self, *args, **kwargs):
+    def produce(self, num_labels = 2, *args, **kwargs):
         bert_class: BertModel = kwargs.get("bert_class", BertModel)
         config = BertConfig(
             hidden_size=self.hidden_size,
             num_hidden_layers=self.num_hidden_layers,
             num_attention_heads=self.num_attention_heads,
+            num_labels=num_labels
         )
         model = bert_class(config)
         if self.init_layers_from_teacher and self.teacher_model.config.hidden_size == model.config.hidden_size:
