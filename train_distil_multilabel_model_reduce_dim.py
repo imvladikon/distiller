@@ -2,7 +2,7 @@ import argparse
 import os
 from pathlib import Path
 
-from catalyst.callbacks import ControlFlowCallback, OptimizerCallback
+from catalyst.callbacks import ControlFlowCallbackWrapper, OptimizerCallback
 from catalyst.callbacks.metric import LoaderMetricCallback
 from catalyst.loggers import WandbLogger
 from transformers import AutoTokenizer
@@ -108,12 +108,12 @@ def main(args):
         10: [1, 2, 3, 4, 5, 6, 7, 9, 11, 13],
     }
     if num_student_layers < num_teacher_layers and num_student_layers in map_layers:
-        slct_callback = ControlFlowCallback(
+        slct_callback = ControlFlowCallbackWrapper(
             HiddenStatesSelectCallback(hiddens_key="t_hidden_states", layers=map_layers[num_student_layers]),
             loaders="train",
         )
 
-    lambda_hiddens_callback = ControlFlowCallback(
+    lambda_hiddens_callback = ControlFlowCallbackWrapper(
         LambdaPreprocessCallback(
             lambda s_hiddens, t_hiddens: (
                 [c_s[:, 0] for c_s in s_hiddens],
@@ -123,7 +123,7 @@ def main(args):
         loaders="train",
     )
 
-    mse_hiddens = ControlFlowCallback(MSEHiddenStatesCallback(
+    mse_hiddens = ControlFlowCallbackWrapper(MSEHiddenStatesCallback(
         normalize=True,
         need_mapping=True,
         teacher_hidden_state_dim=teacher_model.config.hidden_size,
@@ -133,7 +133,7 @@ def main(args):
     ), loaders="train")
 
     scheduler = CwsmTemperatureScheduler(beta=0.5)
-    kl_div = ControlFlowCallback(KLDivCallback(temperature=args.temperature, scheduler=None),
+    kl_div = ControlFlowCallbackWrapper(KLDivCallback(temperature=args.temperature, scheduler=None),
                                  loaders="train")
 
     loss_weights = {
@@ -142,7 +142,7 @@ def main(args):
         "task_loss": args.task_loss_weight,
         "emd_loss": args.emd_loss_weight
     }
-    aggregator = ControlFlowCallback(
+    aggregator = ControlFlowCallbackWrapper(
         MetricAggregationCallback(
             prefix="loss",
             metrics=loss_weights,
@@ -183,7 +183,7 @@ def main(args):
     else:
         os.environ["WANDB_DISABLED"] = "true"
 
-    att_callback = ControlFlowCallback(AttentionEmdCallback.create_from_configs(teacher_config=teacher_model.config,
+    att_callback = ControlFlowCallbackWrapper(AttentionEmdCallback.create_from_configs(teacher_config=teacher_model.config,
                                                                                 student_config=student_model.config,
                                                                                 device=device),
                                        loaders="train")
